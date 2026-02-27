@@ -8,6 +8,7 @@ import ConnectionForm from "./components/ConnectionForm.tsx";
 import Toolbar from "./components/Toolbar.tsx";
 import QueryFeed from "./components/QueryFeed.tsx";
 import QueryDetail from "./components/QueryDetail.tsx";
+import AboutDialog from "./components/AboutDialog.tsx";
 
 export default function App() {
   const [status, setStatus] = createSignal<ProfilerStatus>({
@@ -19,6 +20,7 @@ export default function App() {
   const [selectedId, setSelectedId] = createSignal<string | null>(null);
   const [filterText, setFilterText] = createSignal("");
   const [showConnection, setShowConnection] = createSignal(true);
+  const [showAbout, setShowAbout] = createSignal(false);
   const [autoScroll, setAutoScroll] = createSignal(localStorage.getItem("auto-scroll") !== "false");
 
   createEffect(() => {
@@ -111,7 +113,9 @@ export default function App() {
     <div class="h-screen flex flex-col bg-slate-900">
       <TitleBar
         onToggleConnection={() => setShowConnection((s) => !s)}
+        onShowAbout={() => setShowAbout(true)}
         disabled={showConnection()}
+        aboutDisabled={showAbout()}
       />
 
       <div class="flex-1 flex flex-col min-h-0 relative">
@@ -123,6 +127,10 @@ export default function App() {
             error={status().error}
             connected={status().connected}
           />
+        )}
+
+        {showAbout() && (
+          <AboutDialog onClose={() => setShowAbout(false)} />
         )}
 
         {/* Toolbar */}

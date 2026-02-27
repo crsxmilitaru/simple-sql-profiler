@@ -2,7 +2,9 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 
 interface Props {
   onToggleConnection: () => void;
+  onShowAbout: () => void;
   disabled?: boolean;
+  aboutDisabled?: boolean;
 }
 
 export default function TitleBar(props: Props) {
@@ -25,6 +27,16 @@ export default function TitleBar(props: Props) {
         >
           <i class="fa-solid fa-plug text-[10px]" />
           Connection
+        </button>
+        <div class="w-px h-3.5 bg-slate-700 mx-1" />
+
+        <button
+          class="titlebar-action"
+          onClick={props.onShowAbout}
+          disabled={props.aboutDisabled}
+        >
+          <i class="fa-solid fa-circle-info text-[10px]" />
+          About
         </button>
         <div class="w-px h-3.5 bg-slate-700 mx-1" />
 

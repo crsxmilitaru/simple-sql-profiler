@@ -94,7 +94,8 @@ input[type="checkbox"].custom-checkbox:focus-visible {
 }
 
 input[type="checkbox"].custom-checkbox:checked {
-  @apply bg-blue-500 border-blue-500 shadow-[0_0_8px_rgba(59, 130, 246, 0.3)];
+  @apply bg-blue-500 border-blue-500;
+  box-shadow: 0 0 8px rgba(59, 130, 246, 0.3);
 }
 
 input[type="checkbox"].custom-checkbox:checked::after {
