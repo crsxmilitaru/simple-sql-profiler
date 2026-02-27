@@ -1,9 +1,10 @@
 export interface ConnectionConfig {
-  host: string;
-  port: number;
+  server_name: string;
+  authentication: string;
   username: string;
   password: string;
   database: string;
+  encrypt: string;
   trust_cert: boolean;
 }
 

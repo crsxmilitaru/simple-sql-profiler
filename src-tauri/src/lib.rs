@@ -1,5 +1,6 @@
 mod db;
 mod profiler;
+mod settings;
 
 use db::ConnectionConfig;
 use profiler::{ProfilerCommand, spawn_profiler_task};
@@ -12,14 +13,16 @@ struct AppState {
 
 #[tauri::command]
 async fn connect_to_server(
+    app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
     config: ConnectionConfig,
+    remember_password: bool,
 ) -> Result<(), String> {
     let (reply_tx, reply_rx) = oneshot::channel();
     state
         .tx
         .send(ProfilerCommand::Connect {
-            config,
+            config: config.clone(),
             reply: reply_tx,
         })
         .await
@@ -27,7 +30,20 @@ async fn connect_to_server(
 
     reply_rx
         .await
-        .map_err(|e| format!("Internal error: {e}"))?
+        .map_err(|e| format!("Internal error: {e}"))??;
+
+    let saved = settings::SavedConnection {
+        server_name: config.server_name,
+        authentication: config.authentication,
+        username: config.username,
+        database: config.database,
+        encrypt: config.encrypt,
+        trust_cert: config.trust_cert,
+        remember_password,
+    };
+    settings::save(&app, &saved, &config.password)?;
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -78,6 +94,17 @@ async fn stop_capture(
         .map_err(|e| format!("Internal error: {e}"))?
 }
 
+#[tauri::command]
+async fn load_connection(
+    app: tauri::AppHandle,
+) -> Result<serde_json::Value, String> {
+    let (conn, password) = settings::load(&app)?;
+    let mut val = serde_json::to_value(&conn)
+        .map_err(|e| format!("Serialization error: {e}"))?;
+    val.as_object_mut().unwrap().insert("password".into(), password.into());
+    Ok(val)
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
@@ -91,6 +118,7 @@ pub fn run() {
             disconnect_from_server,
             start_capture,
             stop_capture,
+            load_connection,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

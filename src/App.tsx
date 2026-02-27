@@ -62,10 +62,10 @@ export default function App() {
     });
   });
 
-  async function handleConnect(config: ConnectionConfig) {
+  async function handleConnect(config: ConnectionConfig, rememberPassword: boolean) {
     try {
       setStatus((s) => ({ ...s, error: null }));
-      await invoke("connect_to_server", { config });
+      await invoke("connect_to_server", { config, rememberPassword });
     } catch (e) {
       setStatus((s) => ({ ...s, error: String(e) }));
     }
