@@ -1,4 +1,4 @@
-import { For, createEffect, onCleanup } from "solid-js";
+import { For, createEffect } from "solid-js";
 import type { QueryEvent } from "../lib/types.ts";
 
 interface Props {
@@ -7,7 +7,7 @@ interface Props {
   autoScroll: boolean;
   connected: boolean;
   capturing: boolean;
-  onSelect: (id: string) => void;
+  onSelect: (id: string | null) => void;
 }
 
 export default function QueryFeed(props: Props) {
@@ -21,6 +21,34 @@ export default function QueryFeed(props: Props) {
       });
     }
   });
+
+  function handleKeyDown(e: KeyboardEvent) {
+    if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+    e.preventDefault();
+
+    const queries = props.queries;
+    if (queries.length === 0) return;
+
+    const currentIdx = props.selectedId
+      ? queries.findIndex((q) => q.id === props.selectedId)
+      : -1;
+
+    let nextIdx: number;
+    if (e.key === "ArrowDown") {
+      nextIdx = currentIdx < queries.length - 1 ? currentIdx + 1 : currentIdx;
+    } else {
+      nextIdx = currentIdx > 0 ? currentIdx - 1 : 0;
+    }
+
+    props.onSelect(queries[nextIdx].id);
+
+    // Scroll the selected row into view
+    requestAnimationFrame(() => {
+      containerRef
+        ?.querySelectorAll<HTMLElement>(":scope > div:not(.sticky)")
+        ?.[nextIdx]?.scrollIntoView({ block: "nearest" });
+    });
+  }
 
   function formatDuration(ms: number): string {
     if (ms < 1000) return `${ms}ms`;
@@ -44,20 +72,26 @@ export default function QueryFeed(props: Props) {
     return isoStr;
   }
 
-  function truncateSql(sql: string, maxLen = 120): string {
-    const cleaned = sql.replace(/\s+/g, " ").trim();
-    if (cleaned.length <= maxLen) return cleaned;
-    return cleaned.slice(0, maxLen) + "...";
+  function formatEventType(eventName: string): string {
+    if (eventName.includes("rpc")) return "RPC";
+    if (eventName.includes("batch")) return "BATCH";
+    return eventName;
+  }
+
+  function cleanSql(sql: string): string {
+    return sql.replace(/\s+/g, " ").trim();
   }
 
   return (
     <div
       ref={containerRef}
-      class="flex-1 flex flex-col overflow-auto min-h-0"
+      tabIndex={0}
+      onKeyDown={handleKeyDown}
+      class="flex-1 flex flex-col overflow-auto min-h-0 outline-none"
     >
       {/* Header */}
-      <div class="sticky top-0 z-10 grid grid-cols-[60px_80px_70px_100px_1fr_80px_80px_80px] gap-px bg-slate-700 border-b border-slate-700 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
-        <div class="px-2 py-1.5 bg-slate-800">#</div>
+      <div class="sticky top-0 z-10 grid grid-cols-[50px_80px_70px_140px_1fr_80px_80px_80px] gap-px bg-slate-700 border-b border-slate-700 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+        <div class="px-2 py-1.5 bg-slate-800">Type</div>
         <div class="px-2 py-1.5 bg-slate-800">Time</div>
         <div class="px-2 py-1.5 bg-slate-800">Session</div>
         <div class="px-2 py-1.5 bg-slate-800">Database</div>
@@ -84,16 +118,16 @@ export default function QueryFeed(props: Props) {
         </div>
       ) : (
         <For each={props.queries}>
-          {(query, idx) => (
+          {(query) => (
             <div
-              class={`grid grid-cols-[60px_80px_70px_100px_1fr_80px_80px_80px] gap-px cursor-pointer border-b border-slate-800/50 text-xs transition-colors ${props.selectedId === query.id
+              class={`grid grid-cols-[50px_80px_70px_140px_1fr_80px_80px_80px] gap-px cursor-pointer border-b border-slate-800/50 text-xs transition-colors ${props.selectedId === query.id
                 ? "bg-blue-600/15 text-slate-100"
                 : "hover:bg-slate-800/50 text-slate-300"
                 }`}
-              onClick={() => props.onSelect(query.id)}
+              onClick={() => props.onSelect(props.selectedId === query.id ? null : query.id)}
             >
-              <div class="px-2 py-1.5 text-slate-500 tabular-nums">
-                {idx() + 1}
+              <div class="px-2 py-1.5 text-slate-500">
+                {formatEventType(query.event_name)}
               </div>
               <div class="px-2 py-1.5 tabular-nums text-slate-400">
                 {formatTime(query.start_time)}
@@ -103,7 +137,7 @@ export default function QueryFeed(props: Props) {
                 {query.database_name}
               </div>
               <div class="px-2 py-1.5 truncate font-mono text-[11px]">
-                {truncateSql(query.current_statement || query.sql_text)}
+                {cleanSql(query.current_statement || query.sql_text)}
               </div>
               <div class="px-2 py-1.5 text-right tabular-nums">
                 {formatDuration(query.elapsed_time)}

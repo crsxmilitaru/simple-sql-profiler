@@ -1,17 +1,18 @@
-import { createSignal, createEffect, onMount, onCleanup, Show } from "solid-js";
-import { createStore, produce } from "solid-js/store";
-import { listen } from "@tauri-apps/api/event";
-import { invoke } from "@tauri-apps/api/core";
 import { getVersion } from "@tauri-apps/api/app";
+import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { check } from "@tauri-apps/plugin-updater";
-import type { QueryEvent, ProfilerStatus, ConnectionConfig } from "./lib/types.ts";
-import TitleBar from "./components/TitleBar.tsx";
-import ConnectionForm from "./components/ConnectionForm.tsx";
-import Toolbar from "./components/Toolbar.tsx";
-import QueryFeed from "./components/QueryFeed.tsx";
-import QueryDetail from "./components/QueryDetail.tsx";
+import { createEffect, createSignal, onCleanup, onMount, Show } from "solid-js";
+import { createStore, produce } from "solid-js/store";
 import AboutDialog from "./components/AboutDialog.tsx";
+import ConnectionForm from "./components/ConnectionForm.tsx";
+import ContextMenu from "./components/ContextMenu.tsx";
+import QueryDetail from "./components/QueryDetail.tsx";
+import QueryFeed from "./components/QueryFeed.tsx";
+import TitleBar from "./components/TitleBar.tsx";
+import Toolbar from "./components/Toolbar.tsx";
+import type { ConnectionConfig, ProfilerStatus, QueryEvent } from "./lib/types.ts";
 
 type UpdateMessageTone = "info" | "success" | "error";
 
@@ -68,13 +69,13 @@ export default function App() {
     const filter = filterText().toLowerCase();
     let result: QueryEvent[] = filter
       ? queries.filter(
-          (q) =>
-            q.sql_text.toLowerCase().includes(filter) ||
-            q.current_statement.toLowerCase().includes(filter) ||
-            q.database_name.toLowerCase().includes(filter) ||
-            q.login_name.toLowerCase().includes(filter) ||
-            q.program_name.toLowerCase().includes(filter)
-        )
+        (q) =>
+          q.sql_text.toLowerCase().includes(filter) ||
+          q.current_statement.toLowerCase().includes(filter) ||
+          q.database_name.toLowerCase().includes(filter) ||
+          q.login_name.toLowerCase().includes(filter) ||
+          q.program_name.toLowerCase().includes(filter)
+      )
       : [...queries];
 
     if (deduplicateRepeats()) {
@@ -338,7 +339,7 @@ export default function App() {
             autoScroll={autoScroll()}
             connected={status().connected}
             capturing={status().capturing}
-            onSelect={(id) => setSelectedId(id === selectedId() ? null : id)}
+            onSelect={setSelectedId}
           />
 
           <Show when={selectedQuery()} keyed>
@@ -351,6 +352,7 @@ export default function App() {
           </Show>
         </div>
       </div>
+      <ContextMenu />
     </div>
   );
 }

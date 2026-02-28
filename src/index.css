@@ -197,3 +197,33 @@ input[type="checkbox"].custom-checkbox:checked::after {
 ::-webkit-scrollbar-thumb:hover {
   @apply bg-slate-600;
 }
+
+/* --- Context Menu --- */
+.context-menu {
+  @apply fixed z-[9999] bg-slate-800/95 backdrop-blur-sm border border-slate-700/50 rounded-lg shadow-2xl py-1.5 min-w-[140px] select-none scale-100 opacity-100;
+  box-shadow: 0 12px 30px -10px rgba(0, 0, 0, 0.5);
+  animation: context-menu-in 100ms ease-out;
+}
+
+@keyframes context-menu-in {
+  from {
+    opacity: 0;
+    transform: scale(0.98) translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.context-menu-item {
+  @apply flex items-center justify-between px-3 py-1.5 text-xs text-slate-300 font-medium hover:bg-blue-600 hover:text-white transition-all cursor-pointer mx-1.5 rounded-md w-[calc(100%-12px)] border-none;
+}
+
+.context-menu-item i {
+  @apply text-slate-500 transition-colors text-[10px];
+}
+
+.context-menu-item:hover i {
+  @apply text-white;
+}
