@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://crsxmilitaru.github.io/simple-sql-profiler/sitemap.xml

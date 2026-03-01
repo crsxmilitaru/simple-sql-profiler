@@ -7,6 +7,7 @@
 </p>
 
 <p align="center">
+  <a href="https://crsxmilitaru.github.io/simple-sql-profiler/"><img src="https://img.shields.io/badge/-Website-0969da?style=flat" alt="Website"></a>
   <img src="https://img.shields.io/github/v/release/crsxmilitaru/simple-sql-profiler?label=Release&logo=github&logoColor=white" alt="GitHub Release">
   <a href="https://github.com/crsxmilitaru/simple-sql-profiler"><img src="https://img.shields.io/badge/GitHub-Repository-181717?logo=github&logoColor=white" alt="GitHub"></a>
   <a href="https://github.com/crsxmilitaru/simple-sql-profiler/stargazers"><img src="https://img.shields.io/github/stars/crsxmilitaru/simple-sql-profiler" alt="GitHub Stars"></a>
