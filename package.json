@@ -15,6 +15,7 @@
     "dev": "tauri dev",
     "dev:vite": "vite",
     "build": "vite build",
+    "reset": "rm -rf node_modules package-lock.json && npm install",
     "release:verify": "npm run build && cargo check --manifest-path src-tauri/Cargo.toml",
     "release:check-versions": "node -e \"const fs = require('fs'); const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8')).version; const tauri = JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json', 'utf8')).version; if (pkg !== tauri) { console.error(`Version mismatch: package.json=${pkg}, src-tauri/tauri.conf.json=${tauri}`); process.exit(1); } console.log(`Version OK: ${pkg}`);\"",
     "release:local": "npm run release:check-versions && npm run release:verify && npm run tauri -- build",
@@ -23,18 +24,18 @@
   },
   "dependencies": {
     "@fortawesome/fontawesome-free": "^7.2.0",
-    "@tauri-apps/api": "^2",
+    "@tauri-apps/api": "^2.10.1",
     "@tauri-apps/plugin-process": "^2.3.1",
-    "@tauri-apps/plugin-shell": "^2",
+    "@tauri-apps/plugin-shell": "^2.3.5",
     "@tauri-apps/plugin-updater": "^2.10.0",
-    "solid-js": "^1.9"
+    "solid-js": "^1.9.11"
   },
   "devDependencies": {
-    "@tailwindcss/vite": "^4",
-    "@tauri-apps/cli": "^2",
-    "tailwindcss": "^4",
-    "typescript": "^5.7",
-    "vite": "^6",
-    "vite-plugin-solid": "^2.11"
+    "@tailwindcss/vite": "^4.2.1",
+    "@tauri-apps/cli": "^2.10.0",
+    "tailwindcss": "^4.2.1",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.1",
+    "vite-plugin-solid": "^2.11.10"
   }
 }
