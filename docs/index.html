@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Simple SQL Profiler | Fast & Modern SQL Profiler</title>
+  <meta name="description"
+    content="A fast, lightweight, and modern desktop SQL Profiler for SQL Server. Experience real-time capturing and advanced filtering.">
+  <link rel="icon" href="icon.png" type="image/png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Inter:wght@400;500;600&display=swap"
+    rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+  <header class="navbar">
+    <div class="container nav-content">
+      <div class="logo">
+        <img src="icon.png" alt="Simple SQL Profiler Logo" class="logo-img">
+        <span class="logo-text">Simple SQL Profiler</span>
+      </div>
+      <nav class="nav-links">
+        <a href="https://github.com/crsxmilitaru/simple-sql-profiler" target="_blank" class="github-link">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path
+              d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22">
+            </path>
+          </svg>
+          GitHub
+        </a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="container hero-container">
+        <div class="badge fade-up">
+          Fast. Lightweight. Secure.
+        </div>
+        <h1 class="fade-up delay-1">The Modern Desktop<br>SQL Profiler</h1>
+        <p class="hero-subtitle fade-up delay-2">
+          Directly connect to your SQL Server and capture running queries instantly. A beautifully designed, local-only
+          developer tool built with Tauri and SolidJS.
+        </p>
+        <div class="hero-actions fade-up delay-3">
+          <a href="https://github.com/crsxmilitaru/simple-sql-profiler/releases/latest"
+            class="btn btn-primary btn-download">
+            <span class="os-text">Download Latest Release</span>
+            <svg viewBox="0 0 24 24" fill="none" class="btn-icon" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <polyline points="19 12 12 19 5 12"></polyline>
+            </svg>
+          </a>
+          <a href="https://www.paypal.com/donate?hosted_button_id=MZQS5CZ68NGEW" target="_blank"
+            class="btn btn-secondary">
+            Donate via PayPal
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <section class="preview-section fade-up delay-4">
+      <div class="container preview-container">
+        <div class="preview-wrapper">
+          <img src="preview.png" alt="Simple SQL Profiler Interface" class="preview-img">
+        </div>
+      </div>
+    </section>
+
+    <section id="features" class="features-section">
+      <div class="container">
+        <div class="section-header fade-up">
+          <h2>Powerful features in a private package</h2>
+          <p>Designed for long debugging sessions without the clutter.</p>
+        </div>
+        <div class="features-grid">
+          <div class="feature-card fade-up">
+            <div class="feature-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <polyline points="12 6 12 12 16 14"></polyline>
+              </svg>
+            </div>
+            <h3>Real-time Capture</h3>
+            <p>Directly connects to your SQL Server via standard connection strings and captures running queries
+              instantly as they happen.</p>
+          </div>
+          <div class="feature-card fade-up">
+            <div class="feature-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
+              </svg>
+            </div>
+            <h3>Advanced Filtering</h3>
+            <p>Locate specific queries targeting detailed databases, programs, or logins. Build complex conditions
+              visually to pinpoint specific events.</p>
+          </div>
+          <div class="feature-card fade-up">
+            <div class="feature-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path
+                  d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z">
+                </path>
+                <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+                <line x1="12" y1="22.08" x2="12" y2="12"></line>
+              </svg>
+            </div>
+            <h3>Smart Deduplication</h3>
+            <p>Automatically deduplicates identical consecutive SQL statements to keep the live feed clean, easy to
+              read, and stutter-free.</p>
+          </div>
+          <div class="feature-card fade-up">
+            <div class="feature-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+              </svg>
+            </div>
+            <h3>Local-only & Secure</h3>
+            <p>Zero telemetry. Connects directly using local drivers. Extracted session data never leaves your machine.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="how-it-works" class="cta-section">
+      <div class="container container-sm fade-up">
+        <h2>Ready to profile your database?</h2>
+        <p>Simple SQL Profiler is open-source. Just download, install, and start capturing events directly from your
+          database.</p>
+        <div class="cta-actions">
+          <a href="https://github.com/crsxmilitaru/simple-sql-profiler/releases/latest"
+            class="btn btn-primary btn-download">
+            <span class="os-text">Download Latest Release</span>
+          </a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-content">
+        <div class="footer-left">
+          <div class="logo">
+            <img src="icon.png" alt="Logo" class="logo-img-small">
+            <span class="logo-text">Simple SQL Profiler</span>
+          </div>
+          <p class="footer-desc">Fast, lightweight, and modern desktop SQL Profiler.</p>
+        </div>
+        <div class="footer-right">
+          <a href="https://github.com/crsxmilitaru/simple-sql-profiler" target="_blank">GitHub Repository</a>
+          <a href="https://github.com/crsxmilitaru/simple-sql-profiler/blob/main/LICENSE" target="_blank">License</a>
+          <a href="https://www.paypal.com/donate?hosted_button_id=MZQS5CZ68NGEW" target="_blank">Donate</a>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <p>&copy; <span id="year"></span> Simple SQL Profiler. Open-source software.</p>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    document.getElementById('year').textContent = new Date().getFullYear();
+
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('visible');
+          observer.unobserve(entry.target);
+        }
+      });
+    }, {
+      threshold: 0.1,
+      rootMargin: '0px 0px -50px 0px'
+    });
+
+    document.querySelectorAll('.fade-up').forEach(element => {
+      observer.observe(element);
+    });
+
+    function detectOS() {
+      const userAgent = window.navigator.userAgent;
+      const platform = window.navigator.platform;
+      const macosPlatforms = ['Macintosh', 'MacIntel', 'MacPPC', 'Mac68K'];
+      const windowsPlatforms = ['Win32', 'Win64', 'Windows', 'WinCE'];
+      const iosPlatforms = ['iPhone', 'iPad', 'iPod'];
+      let os = 'Unknown';
+
+      if (macosPlatforms.indexOf(platform) !== -1) {
+        os = 'macOS';
+      } else if (iosPlatforms.indexOf(platform) !== -1) {
+        os = 'iOS';
+      } else if (windowsPlatforms.indexOf(platform) !== -1) {
+        os = 'Windows';
+      } else if (/Android/.test(userAgent)) {
+        os = 'Android';
+      } else if (!os && /Linux/.test(platform)) {
+        os = 'Linux';
+      }
+
+      return os;
+    }
+
+    async function attachDownloadLinks() {
+      const os = detectOS();
+      let targetExts = ['.msi', '.exe'];
+      let osNameDisplay = "";
+
+      if (os === 'Windows') {
+        targetExts = ['.msi', '.exe'];
+        osNameDisplay = 'Windows';
+      } else if (os === 'macOS') {
+        targetExts = ['.dmg', '.app.tar.gz'];
+        osNameDisplay = 'macOS';
+      } else if (os === 'Linux') {
+        targetExts = ['.AppImage', '.deb'];
+        osNameDisplay = 'Linux';
+      }
+
+      if (osNameDisplay) {
+        document.querySelectorAll('.os-text').forEach(el => {
+          el.textContent = `Download for ${osNameDisplay}`;
+        });
+      }
+
+      try {
+        const response = await fetch('https://api.github.com/repos/crsxmilitaru/simple-sql-profiler/releases/latest');
+        if (!response.ok) return;
+
+        const data = await response.json();
+        const asset = data.assets.find(a => targetExts.some(ext => a.name.endsWith(ext)));
+
+        if (asset) {
+          document.querySelectorAll('.btn-download').forEach(btn => {
+            btn.href = asset.browser_download_url;
+          });
+        }
+      } catch (e) {
+      }
+    }
+    attachDownloadLinks();
+  </script>
+</body>
+
+</html>
