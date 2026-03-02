@@ -11,122 +11,154 @@ use crate::db::{self, ConnectionConfig, SqlClient};
 
 const MIN_TIMESTAMP: &str = "1900-01-01T00:00:00.000";
 
-const TRACE_CREATE_AND_START: &str = "
-DECLARE @trace_id int;
-DECLARE @trace_options int = 0;
-DECLARE @max_file_mb bigint = 1024;
-DECLARE @on bit = 1;
+const XE_SESSION_NAME: &str = "SimpleSQLProfilerXE";
 
-DECLARE @errorlog nvarchar(260) = CONVERT(nvarchar(260), SERVERPROPERTY('ErrorLogFileName'));
-DECLARE @directory nvarchar(260) = LEFT(@errorlog, LEN(@errorlog) - CHARINDEX('\\', REVERSE(@errorlog)) + 1);
-DECLARE @trace_file nvarchar(260) =
-    @directory + N'SimpleSQLProfiler_' + REPLACE(CONVERT(nvarchar(36), NEWID()), N'-', N'') + N'.trc';
+const XE_CREATE_AND_START: &str = "
+DECLARE @session_name sysname = @P1;
+DECLARE @sql nvarchar(max);
 
-EXEC sp_trace_create @trace_id OUTPUT, @trace_options, @trace_file, @max_file_mb, NULL;
-
-DECLARE @events TABLE(id int);
-INSERT INTO @events(id)
-VALUES
-    ((SELECT trace_event_id FROM sys.trace_events WHERE name = N'RPC:Completed')),
-    ((SELECT trace_event_id FROM sys.trace_events WHERE name = N'SQL:BatchCompleted'));
-
-IF EXISTS (SELECT 1 FROM @events WHERE id IS NULL)
-BEGIN
-    RAISERROR('Required SQL Trace events are unavailable on this server.', 16, 1);
-    RETURN;
-END
-
-DECLARE @columns TABLE(id int);
-INSERT INTO @columns(id)
-VALUES
-    (1),  -- TextData
-    (8),  -- HostName
-    (10), -- ApplicationName
-    (11), -- LoginName
-    (12), -- SPID
-    (13), -- Duration
-    (14), -- StartTime
-    (15), -- EndTime
-    (16), -- Reads
-    (17), -- Writes
-    (18), -- CPU
-    (35), -- DatabaseName
-    (48), -- RowCounts
-    (51); -- EventSequence
-
-DECLARE @event_id int;
-DECLARE @column_id int;
-DECLARE event_col_cursor CURSOR LOCAL FAST_FORWARD FOR
-    SELECT e.id, c.id
-    FROM @events e
-    CROSS JOIN @columns c;
-
-OPEN event_col_cursor;
-FETCH NEXT FROM event_col_cursor INTO @event_id, @column_id;
-WHILE @@FETCH_STATUS = 0
-BEGIN
-    EXEC sp_trace_setevent @trace_id, @event_id, @column_id, @on;
-    FETCH NEXT FROM event_col_cursor INTO @event_id, @column_id;
-END
-CLOSE event_col_cursor;
-DEALLOCATE event_col_cursor;
-
--- Exclude this app itself
-EXEC sp_trace_setfilter @trace_id, 10, 0, 7, N'%SimpleSQLProfiler%';
-
-EXEC sp_trace_setstatus @trace_id, 1;
-
-SELECT @trace_id AS trace_id, t.path AS trace_file
-FROM sys.traces t
-WHERE t.id = @trace_id;
-";
-
-const TRACE_STOP_AND_CLOSE: &str = "
-IF EXISTS (SELECT 1 FROM sys.traces WHERE id = @P1)
+IF EXISTS (SELECT 1 FROM sys.server_event_sessions WHERE name = @session_name)
 BEGIN
     BEGIN TRY
-        EXEC sp_trace_setstatus @P1, 0;
+        SET @sql = N'ALTER EVENT SESSION ' + QUOTENAME(@session_name) + N' ON SERVER STATE = STOP;';
+        EXEC(@sql);
     END TRY
     BEGIN CATCH
     END CATCH;
 
     BEGIN TRY
-        EXEC sp_trace_setstatus @P1, 2;
+        SET @sql = N'DROP EVENT SESSION ' + QUOTENAME(@session_name) + N' ON SERVER;';
+        EXEC(@sql);
+    END TRY
+    BEGIN CATCH
+    END CATCH;
+END
+
+SET @sql = N'
+CREATE EVENT SESSION ' + QUOTENAME(@session_name) + N' ON SERVER
+ADD EVENT sqlserver.rpc_completed(
+    ACTION(
+        package0.event_sequence,
+        sqlserver.session_id,
+        sqlserver.client_app_name,
+        sqlserver.client_hostname,
+        sqlserver.server_principal_name,
+        sqlserver.sql_text
+    )
+    WHERE ([sqlserver].[client_app_name] NOT LIKE N''%SimpleSQLProfiler%'')
+),
+ADD EVENT sqlserver.sql_batch_completed(
+    ACTION(
+        package0.event_sequence,
+        sqlserver.session_id,
+        sqlserver.client_app_name,
+        sqlserver.client_hostname,
+        sqlserver.server_principal_name,
+        sqlserver.sql_text
+    )
+    WHERE ([sqlserver].[client_app_name] NOT LIKE N''%SimpleSQLProfiler%'')
+)
+ADD TARGET package0.ring_buffer;';
+EXEC(@sql);
+
+SET @sql = N'ALTER EVENT SESSION ' + QUOTENAME(@session_name) + N' ON SERVER STATE = START;';
+EXEC(@sql);
+
+SELECT @session_name AS session_name;
+";
+
+const XE_STOP_AND_DROP: &str = "
+DECLARE @session_name sysname = @P1;
+DECLARE @sql nvarchar(max);
+
+IF EXISTS (SELECT 1 FROM sys.server_event_sessions WHERE name = @session_name)
+BEGIN
+    BEGIN TRY
+        SET @sql = N'ALTER EVENT SESSION ' + QUOTENAME(@session_name) + N' ON SERVER STATE = STOP;';
+        EXEC(@sql);
+    END TRY
+    BEGIN CATCH
+    END CATCH;
+
+    BEGIN TRY
+        SET @sql = N'DROP EVENT SESSION ' + QUOTENAME(@session_name) + N' ON SERVER;';
+        EXEC(@sql);
     END TRY
     BEGIN CATCH
     END CATCH;
 END
 ";
 
-const TRACE_POLL_EVENTS: &str = "
+const XE_POLL_EVENTS: &str = "
+WITH xe_data AS (
+    SELECT CAST(st.target_data AS xml) AS target_data
+    FROM sys.dm_xe_sessions s
+    INNER JOIN sys.dm_xe_session_targets st
+        ON st.event_session_address = s.address
+    WHERE s.name = @P1
+      AND st.target_name = N'ring_buffer'
+),
+parsed AS (
+    SELECT
+        node.value('@name', 'nvarchar(128)') AS event_name,
+        TRY_CONVERT(datetimeoffset(7), node.value('@timestamp', 'nvarchar(50)')) AS start_time_utc,
+        ISNULL(node.value('(action[@name=\"event_sequence\"]/value)[1]', 'bigint'), 0) AS event_sequence,
+        ISNULL(node.value('(action[@name=\"session_id\"]/value)[1]', 'int'), 0) AS session_id,
+        ISNULL(node.value('(data[@name=\"duration\"]/value)[1]', 'bigint'), 0) AS duration_us,
+        ISNULL(node.value('(data[@name=\"cpu_time\"]/value)[1]', 'bigint'), 0) AS cpu_time_us,
+        ISNULL(node.value('(data[@name=\"logical_reads\"]/value)[1]', 'bigint'), 0) AS logical_reads,
+        ISNULL(node.value('(data[@name=\"physical_reads\"]/value)[1]', 'bigint'), 0) AS physical_reads,
+        ISNULL(node.value('(data[@name=\"writes\"]/value)[1]', 'bigint'), 0) AS writes,
+        ISNULL(node.value('(data[@name=\"row_count\"]/value)[1]', 'bigint'), 0) AS row_count,
+        CAST(ISNULL(node.value('(data[@name=\"statement\"]/value)[1]', 'nvarchar(4000)'), N'') AS nvarchar(4000)) AS statement_text,
+        CAST(ISNULL(node.value('(data[@name=\"batch_text\"]/value)[1]', 'nvarchar(4000)'), N'') AS nvarchar(4000)) AS batch_text,
+        CAST(ISNULL(node.value('(action[@name=\"sql_text\"]/value)[1]', 'nvarchar(4000)'), N'') AS nvarchar(4000)) AS sql_text_action,
+        CAST(ISNULL(node.value('(data[@name=\"database_name\"]/value)[1]', 'nvarchar(128)'), N'') AS nvarchar(128)) AS database_name_data,
+        ISNULL(node.value('(data[@name=\"database_id\"]/value)[1]', 'int'), 0) AS database_id,
+        CAST(ISNULL(node.value('(action[@name=\"server_principal_name\"]/value)[1]', 'nvarchar(128)'), N'') AS nvarchar(128)) AS login_name,
+        CAST(ISNULL(node.value('(action[@name=\"client_hostname\"]/value)[1]', 'nvarchar(128)'), N'') AS nvarchar(128)) AS host_name,
+        CAST(ISNULL(node.value('(action[@name=\"client_app_name\"]/value)[1]', 'nvarchar(128)'), N'') AS nvarchar(128)) AS program_name
+    FROM xe_data d
+    CROSS APPLY d.target_data.nodes('/RingBufferTarget/event') AS n(node)
+)
 SELECT TOP (5000)
-    CAST(EventClass AS int) AS event_class,
-    CONVERT(varchar(27), StartTime, 126) AS start_time,
-    CAST(ISNULL(EventSequence, 0) AS bigint) AS event_sequence,
-    CAST(ISNULL(Duration, 0) AS bigint) AS duration_us,
-    CAST(ISNULL(CPU, 0) AS bigint) AS cpu_ms,
-    CAST(ISNULL(Reads, 0) AS bigint) AS reads,
-    CAST(ISNULL(Writes, 0) AS bigint) AS writes,
-    CAST(ISNULL(RowCounts, 0) AS bigint) AS row_count,
-    CAST(ISNULL(TextData, N'') AS nvarchar(max)) AS text_data,
-    CAST(ISNULL(DatabaseName, N'') AS nvarchar(128)) AS database_name,
-    CAST(ISNULL(LoginName, N'') AS nvarchar(128)) AS login_name,
-    CAST(ISNULL(HostName, N'') AS nvarchar(128)) AS host_name,
-    CAST(ISNULL(ApplicationName, N'') AS nvarchar(128)) AS program_name,
-    CAST(ISNULL(SPID, 0) AS int) AS session_id
-FROM sys.fn_trace_gettable(@P1, 1)
-WHERE EventClass IN (10, 12)
-  AND ISNULL(ApplicationName, N'') NOT LIKE N'%SimpleSQLProfiler%'
+    event_name,
+    CONVERT(varchar(27), CAST(start_time_utc AS datetime2(3)), 126) AS start_time,
+    event_sequence,
+    duration_us,
+    cpu_time_us,
+    logical_reads,
+    physical_reads,
+    writes,
+    row_count,
+    CASE
+        WHEN event_name = N'rpc_completed' AND LEN(statement_text) > 0 THEN statement_text
+        WHEN LEN(batch_text) > 0 THEN batch_text
+        ELSE sql_text_action
+    END AS sql_text,
+    statement_text AS current_statement,
+    CASE
+        WHEN LEN(database_name_data) > 0 THEN database_name_data
+        WHEN database_id > 0 THEN ISNULL(DB_NAME(database_id), N'')
+        ELSE N''
+    END AS database_name,
+    login_name,
+    host_name,
+    program_name,
+    session_id
+FROM parsed
+WHERE event_name IN (N'rpc_completed', N'sql_batch_completed')
+  AND start_time_utc IS NOT NULL
   AND (
-      CONVERT(varchar(27), StartTime, 126) > @P2
+      CAST(start_time_utc AS datetime2(3)) > TRY_CONVERT(datetime2(3), @P2)
       OR (
-          CONVERT(varchar(27), StartTime, 126) = @P2
-          AND CAST(ISNULL(EventSequence, 0) AS bigint) > @P3
+          CAST(start_time_utc AS datetime2(3)) = TRY_CONVERT(datetime2(3), @P2)
+          AND event_sequence > @P3
       )
   )
 ORDER BY
-    CONVERT(varchar(27), StartTime, 126) ASC,
-    CAST(ISNULL(EventSequence, 0) AS bigint) ASC;
+    CAST(start_time_utc AS datetime2(3)) ASC,
+    event_sequence ASC;
 ";
 
 #[derive(Debug, Clone, Serialize)]
@@ -165,9 +197,8 @@ struct PolledEvent {
 }
 
 #[derive(Debug, Clone)]
-struct ActiveTrace {
-    trace_id: i32,
-    trace_file: String,
+struct ActiveSession {
+    session_name: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -214,7 +245,7 @@ async fn profiler_loop(
 
     let mut control_client: Option<SqlClient> = None;
     let mut active_config: Option<ConnectionConfig> = None;
-    let mut active_trace: Option<ActiveTrace> = None;
+    let mut active_session: Option<ActiveSession> = None;
     let mut polling_task: Option<tauri::async_runtime::JoinHandle<()>> = None;
     let mut poll_run_flag: Option<Arc<AtomicBool>> = None;
 
@@ -249,10 +280,10 @@ async fn profiler_loop(
         match cmd {
             ProfilerCommand::Connect { config, reply } => {
                 stop_polling_now(&mut poll_run_flag, &mut polling_task);
-                if let (Some(c), Some(trace)) = (control_client.as_mut(), active_trace.as_ref()) {
-                    let _ = stop_and_close_trace(c, trace.trace_id).await;
+                if let (Some(c), Some(session)) = (control_client.as_mut(), active_session.as_ref()) {
+                    let _ = stop_and_close_session(c, &session.session_name).await;
                 }
-                active_trace = None;
+                active_session = None;
 
                 match db::connect(&config).await {
                     Ok(c) => {
@@ -272,14 +303,17 @@ async fn profiler_loop(
             ProfilerCommand::Disconnect { reply } => {
                 stop_polling_now(&mut poll_run_flag, &mut polling_task);
 
-                if let (Some(c), Some(trace)) = (control_client.as_mut(), active_trace.as_ref()) {
-                    let _ = stop_and_close_trace(c, trace.trace_id).await;
-                }
-
+                let stop_error = if let (Some(c), Some(session)) = (control_client.as_mut(), active_session.as_ref()) {
+                    stop_and_close_session(c, &session.session_name)
+                        .await
+                        .err()
+                } else {
+                    None
+                };
                 control_client = None;
                 active_config = None;
-                active_trace = None;
-                emit_status(&app, false, false, None);
+                active_session = None;
+                emit_status(&app, false, false, stop_error);
                 let _ = reply.send(Ok(()));
             }
             ProfilerCommand::StartCapture { reply } => {
@@ -289,14 +323,14 @@ async fn profiler_loop(
                 }
 
                 stop_polling_now(&mut poll_run_flag, &mut polling_task);
-                if let (Some(control), Some(trace)) = (control_client.as_mut(), active_trace.as_ref()) {
-                    let _ = stop_and_close_trace(control, trace.trace_id).await;
-                    active_trace = None;
+                if let (Some(control), Some(session)) = (control_client.as_mut(), active_session.as_ref()) {
+                    let _ = stop_and_close_session(control, &session.session_name).await;
+                    active_session = None;
                 }
 
-                let trace = match control_client.as_mut() {
-                    Some(control) => match start_trace(control).await {
-                        Ok(trace) => trace,
+                let session = match control_client.as_mut() {
+                    Some(control) => match start_session(control, XE_SESSION_NAME).await {
+                        Ok(session) => session,
                         Err(e) => {
                             let _ = reply.send(Err(e));
                             continue;
@@ -307,7 +341,7 @@ async fn profiler_loop(
                         continue;
                     }
                 };
-                active_trace = Some(trace.clone());
+                active_session = Some(session.clone());
 
                 let Some(cfg) = active_config.clone() else {
                     let _ = reply.send(Err("Missing connection configuration".into()));
@@ -321,17 +355,17 @@ async fn profiler_loop(
                         polling_task = Some(spawn_polling_task(
                             app.clone(),
                             poll_client,
-                            trace.trace_file.clone(),
+                            session.session_name.clone(),
                             run_flag,
                         ));
                         emit_status(&app, true, true, None);
                         let _ = reply.send(Ok(()));
                     }
                     Err(e) => {
-                        if let (Some(control), Some(t)) = (control_client.as_mut(), active_trace.as_ref()) {
-                            let _ = stop_and_close_trace(control, t.trace_id).await;
+                        if let (Some(control), Some(s)) = (control_client.as_mut(), active_session.as_ref()) {
+                            let _ = stop_and_close_session(control, &s.session_name).await;
                         }
-                        active_trace = None;
+                        active_session = None;
                         let message = format!("Failed to start polling stream: {e}");
                         emit_status(&app, true, false, Some(message.clone()));
                         let _ = reply.send(Err(message));
@@ -340,13 +374,23 @@ async fn profiler_loop(
             }
             ProfilerCommand::StopCapture { reply } => {
                 stop_polling_now(&mut poll_run_flag, &mut polling_task);
-                emit_status(&app, control_client.is_some(), false, None);
-                let _ = reply.send(Ok(()));
+                let stop_result = if let (Some(c), Some(session)) = (control_client.as_mut(), active_session.as_ref()) {
+                    stop_and_close_session(c, &session.session_name).await
+                } else {
+                    Ok(())
+                };
+                active_session = None;
 
-                if let (Some(c), Some(trace)) = (control_client.as_mut(), active_trace.as_ref()) {
-                    let _ = stop_and_close_trace(c, trace.trace_id).await;
+                match stop_result {
+                    Ok(()) => {
+                        emit_status(&app, control_client.is_some(), false, None);
+                        let _ = reply.send(Ok(()));
+                    }
+                    Err(e) => {
+                        emit_status(&app, control_client.is_some(), false, Some(e.clone()));
+                        let _ = reply.send(Err(e));
+                    }
                 }
-                active_trace = None;
             }
             ProfilerCommand::ExecuteQuery { sql, reply } => {
                 let Some(client) = control_client.as_mut() else {
@@ -360,12 +404,15 @@ async fn profiler_loop(
     }
 
     stop_polling_now(&mut poll_run_flag, &mut polling_task);
+    if let (Some(c), Some(session)) = (control_client.as_mut(), active_session.as_ref()) {
+        let _ = stop_and_close_session(c, &session.session_name).await;
+    }
 }
 
 fn spawn_polling_task(
     app: tauri::AppHandle,
     mut poll_client: SqlClient,
-    trace_file: String,
+    session_name: String,
     run_flag: Arc<AtomicBool>,
 ) -> tauri::async_runtime::JoinHandle<()> {
     tauri::async_runtime::spawn(async move {
@@ -387,10 +434,10 @@ fn spawn_polling_task(
             }
 
             let events =
-                match poll_trace_events(&mut poll_client, &trace_file, &last_timestamp, last_event_sequence).await {
+                match poll_session_events(&mut poll_client, &session_name, &last_timestamp, last_event_sequence).await {
                     Ok(events) => events,
                     Err(e) => {
-                        if is_transient_trace_file_error(&e) {
+                        if is_transient_session_poll_error(&e) {
                             continue;
                         }
                         let _ = app.emit(
@@ -463,108 +510,109 @@ fn spawn_polling_task(
     })
 }
 
-async fn start_trace(client: &mut SqlClient) -> Result<ActiveTrace, String> {
-    let stream = client
-        .simple_query(TRACE_CREATE_AND_START)
-        .await
-        .map_err(|e| format!("Failed to create/start SQL Trace: {e}"))?;
-
-    let rows = stream
-        .into_results()
-        .await
-        .map_err(|e| format!("Failed to read SQL Trace creation result: {e}"))?;
-
-    for result_set in rows {
-        for row in result_set {
-            let trace_id = row.get::<i32, _>("trace_id");
-            let trace_file = row.get::<&str, _>("trace_file");
-            if let (Some(id), Some(file)) = (trace_id, trace_file) {
-                if id > 0 && !file.is_empty() {
-                    return Ok(ActiveTrace {
-                        trace_id: id,
-                        trace_file: file.to_string(),
-                    });
-                }
-            }
-        }
-    }
-
-    Err("SQL Trace creation returned invalid trace metadata".into())
-}
-
-async fn stop_and_close_trace(client: &mut SqlClient, trace_id: i32) -> Result<(), String> {
+async fn start_session(client: &mut SqlClient, session_name: &str) -> Result<ActiveSession, String> {
     use tiberius::Query;
 
-    let mut query = Query::new(TRACE_STOP_AND_CLOSE);
-    query.bind(trace_id);
+    let mut query = Query::new(XE_CREATE_AND_START);
+    query.bind(session_name);
+
+    let stream = query
+        .query(client)
+        .await
+        .map_err(|e| format!("Failed to create/start Extended Events session: {e}"))?;
+
+    stream
+        .into_results()
+        .await
+        .map_err(|e| format!("Failed to read Extended Events session creation result: {e}"))?;
+
+    Ok(ActiveSession {
+        session_name: session_name.to_string(),
+    })
+}
+
+async fn stop_and_close_session(
+    client: &mut SqlClient,
+    session_name: &str,
+) -> Result<(), String> {
+    use tiberius::Query;
+
+    let mut query = Query::new(XE_STOP_AND_DROP);
+    query.bind(session_name);
 
     query
         .query(client)
         .await
-        .map_err(|e| format!("Failed to stop/close SQL Trace: {e}"))?
+        .map_err(|e| format!("Failed to stop/drop Extended Events session: {e}"))?
         .into_results()
         .await
-        .map_err(|e| format!("Failed to confirm SQL Trace stop/close: {e}"))?;
+        .map_err(|e| format!("Failed to confirm Extended Events session stop/drop: {e}"))?;
 
     Ok(())
 }
 
-async fn poll_trace_events(
+async fn poll_session_events(
     client: &mut SqlClient,
-    trace_file: &str,
+    session_name: &str,
     last_timestamp: &str,
     last_event_sequence: i64,
 ) -> Result<Vec<PolledEvent>, String> {
     use tiberius::Query;
 
-    let mut query = Query::new(TRACE_POLL_EVENTS);
-    query.bind(trace_file);
+    let mut query = Query::new(XE_POLL_EVENTS);
+    query.bind(session_name);
     query.bind(last_timestamp);
     query.bind(last_event_sequence);
 
     let stream = query
         .query(client)
         .await
-        .map_err(|e| format!("Trace poll query failed: {e}"))?;
+        .map_err(|e| format!("Extended Events poll query failed: {e}"))?;
 
     let rows = stream
         .into_results()
         .await
-        .map_err(|e| format!("Failed to read trace poll results: {e}"))?;
+        .map_err(|e| format!("Failed to read Extended Events poll results: {e}"))?;
 
     let mut events = Vec::new();
 
     if let Some(result_set) = rows.first() {
         for row in result_set {
-            let event_class: i32 = row.get::<i32, _>("event_class").unwrap_or(0);
-            let event_name = match event_class {
-                10 => "rpc_completed".to_string(),
-                12 => "sql_batch_completed".to_string(),
-                _ => continue,
-            };
-
+            let event_name: String = row.get::<&str, _>("event_name").unwrap_or("").to_string();
+            if event_name != "rpc_completed" && event_name != "sql_batch_completed" {
+                continue;
+            }
             let start_time: String = row.get::<&str, _>("start_time").unwrap_or("").to_string();
             let event_sequence: i64 = row.get::<i64, _>("event_sequence").unwrap_or(0);
 
             let duration_us: i64 = row.get::<i64, _>("duration_us").unwrap_or(0);
-            let cpu_ms: i64 = row.get::<i64, _>("cpu_ms").unwrap_or(0);
+            let cpu_time_us: i64 = row.get::<i64, _>("cpu_time_us").unwrap_or(0);
             let elapsed_time = (duration_us / 1000) as i32;
-            let cpu_time = cpu_ms as i32;
+            let cpu_time = (cpu_time_us / 1000) as i32;
 
-            let logical_reads: i64 = row.get::<i64, _>("reads").unwrap_or(0);
+            let logical_reads: i64 = row.get::<i64, _>("logical_reads").unwrap_or(0);
+            let physical_reads: i64 = row.get::<i64, _>("physical_reads").unwrap_or(0);
             let writes: i64 = row.get::<i64, _>("writes").unwrap_or(0);
             let row_count: i64 = row.get::<i64, _>("row_count").unwrap_or(0);
 
-            let text_data: String = row.get::<&str, _>("text_data").unwrap_or("").to_string();
+            let sql_text: String = row.get::<&str, _>("sql_text").unwrap_or("").to_string();
+            let current_statement_raw: String =
+                row.get::<&str, _>("current_statement").unwrap_or("").to_string();
             let database_name: String = row.get::<&str, _>("database_name").unwrap_or("").to_string();
             let login_name: String = row.get::<&str, _>("login_name").unwrap_or("").to_string();
             let host_name: String = row.get::<&str, _>("host_name").unwrap_or("").to_string();
             let program_name: String = row.get::<&str, _>("program_name").unwrap_or("").to_string();
             let session_id: i32 = row.get::<i32, _>("session_id").unwrap_or(0);
 
-            let (sql_text, current_statement) = match event_class {
-                10 => (text_data.clone(), text_data),
-                _ => (text_data, String::new()),
+            let current_statement = if event_name == "rpc_completed" {
+                current_statement_raw
+            } else {
+                String::new()
+            };
+            let sql_text = if sql_text.is_empty() {
+                current_statement.clone()
+            } else {
+                sql_text
             };
 
             events.push(PolledEvent {
@@ -576,7 +624,7 @@ async fn poll_trace_events(
                     database_name,
                     cpu_time,
                     elapsed_time,
-                    physical_reads: 0,
+                    physical_reads,
                     writes,
                     logical_reads,
                     row_count,
@@ -596,10 +644,10 @@ async fn poll_trace_events(
     Ok(events)
 }
 
-fn is_transient_trace_file_error(message: &str) -> bool {
+fn is_transient_session_poll_error(message: &str) -> bool {
     let lower = message.to_lowercase();
-    lower.contains("code: 19049")
-        || (lower.contains("there are no more files") && lower.contains("fn_trace_gettable"))
+    (lower.contains("event session") && lower.contains("does not exist"))
+        || (lower.contains("target") && lower.contains("ring_buffer") && lower.contains("does not exist"))
 }
 
 async fn execute_user_query(
