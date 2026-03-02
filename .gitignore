@@ -9,13 +9,6 @@ C:/tmp/sql-profiler-target/
 src-tauri/target/
 src-tauri/gen/
 
-# Generated icons — keep only the ones required by tauri.conf.json
-src-tauri/icons/Square*.png
-src-tauri/icons/StoreLogo.png
-src-tauri/icons/64x64.png
-src-tauri/icons/android/
-src-tauri/icons/ios/
-
 # Environment & secrets
 .env
 .env.*
