@@ -1,6 +1,6 @@
 {
   "name": "simple-sql-profiler",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "displayName": "Simple SQL Profiler",
   "description": "Fast, lightweight, and modern desktop SQL Profiler",
   "author": "Cristian Militaru",
@@ -15,7 +15,7 @@
     "dev": "tauri dev",
     "dev:vite": "vite",
     "build": "vite build",
-    "bump": "node -e \"const v=process.argv[1]; if(!v){console.error('Usage: npm run bump <version>'); process.exit(1);} require('child_process').execSync('npm version '+v+' --no-git-tag-version', {stdio:'inherit'}); const fs=require('fs'); const t='src-tauri/tauri.conf.json'; const d=JSON.parse(fs.readFileSync(t,'utf8')); d.version=v; fs.writeFileSync(t,JSON.stringify(d,null,2)+'\\r\\n'); console.log('Tauri app version updated to '+v);\"",
+    "bump": "node -e \"const v=process.argv[1]; if(!v){console.error('Usage: npm run bump <version>'); process.exit(1);} require('child_process').execSync('npm version '+v+' --no-git-tag-version', {stdio:'inherit'}); const fs=require('fs'); const t='src-tauri/tauri.conf.json'; const d=JSON.parse(fs.readFileSync(t,'utf8')); d.version=v; fs.writeFileSync(t,JSON.stringify(d,null,2)+'\\r\\n'); require('child_process').execSync('git add package.json package-lock.json ' + t); require('child_process').execSync('git commit -m \\\"v' + v + '\\\"'); console.log('Tauri app version updated and committed to ' + v);\"",
     "reset": "rm -rf node_modules package-lock.json && npm install",
     "release:verify": "npm run build && cargo check --manifest-path src-tauri/Cargo.toml",
     "release:check-versions": "node -e \"const fs = require('fs'); const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8')).version; const tauri = JSON.parse(fs.readFileSync('src-tauri/tauri.conf.json', 'utf8')).version; if (pkg !== tauri) { console.error(`Version mismatch: package.json=${pkg}, src-tauri/tauri.conf.json=${tauri}`); process.exit(1); } console.log(`Version OK: ${pkg}`);\"",
