@@ -14,7 +14,61 @@ pub struct ConnectionConfig {
     pub trust_cert: bool,
 }
 
-pub type SqlClient = Client<Compat<TcpStream>>;
+use std::pin::Pin;
+use std::task::{Context, Poll};
+use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
+
+pub enum TransportStream {
+    Tcp(TcpStream),
+    #[cfg(windows)]
+    NamedPipe(tokio::net::windows::named_pipe::NamedPipeClient),
+}
+
+impl AsyncRead for TransportStream {
+    fn poll_read(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<std::io::Result<()>> {
+        match self.get_mut() {
+            TransportStream::Tcp(s) => Pin::new(s).poll_read(cx, buf),
+            #[cfg(windows)]
+            TransportStream::NamedPipe(s) => Pin::new(s).poll_read(cx, buf),
+        }
+    }
+}
+
+impl AsyncWrite for TransportStream {
+    fn poll_write(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<std::io::Result<usize>> {
+        match self.get_mut() {
+            TransportStream::Tcp(s) => Pin::new(s).poll_write(cx, buf),
+            #[cfg(windows)]
+            TransportStream::NamedPipe(s) => Pin::new(s).poll_write(cx, buf),
+        }
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
+        match self.get_mut() {
+            TransportStream::Tcp(s) => Pin::new(s).poll_flush(cx),
+            #[cfg(windows)]
+            TransportStream::NamedPipe(s) => Pin::new(s).poll_flush(cx),
+        }
+    }
+
+    fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
+        match self.get_mut() {
+            TransportStream::Tcp(s) => Pin::new(s).poll_shutdown(cx),
+            #[cfg(windows)]
+            TransportStream::NamedPipe(s) => Pin::new(s).poll_shutdown(cx),
+        }
+    }
+}
+
+pub type SqlClient = Client<Compat<TransportStream>>;
 
 pub async fn connect(config: &ConnectionConfig) -> Result<SqlClient, String> {
     let mut tib_config = Config::new();
@@ -32,7 +86,10 @@ pub async fn connect(config: &ConnectionConfig) -> Result<SqlClient, String> {
 
     match config.authentication.as_str() {
         "windows" => {
-            return Err("Windows Authentication is not supported yet".into());
+            #[cfg(windows)]
+            tib_config.authentication(AuthMethod::Integrated);
+            #[cfg(not(windows))]
+            return Err("Windows Authentication is only supported on Windows".into());
         }
         _ => {
             tib_config.authentication(AuthMethod::sql_server(&config.username, &config.password));
@@ -52,20 +109,41 @@ pub async fn connect(config: &ConnectionConfig) -> Result<SqlClient, String> {
 
     tib_config.application_name("SimpleSQLProfiler");
 
-    let tcp = if instance.is_some() {
-        TcpStream::connect_named(&tib_config)
-            .await
-            .map_err(|e| format!("Named instance resolution failed for '{}': {e}", config.server_name))?
+    let tcp_result = if instance.is_some() {
+        TcpStream::connect_named(&tib_config).await.map_err(|e| e.to_string())
     } else {
-        TcpStream::connect(tib_config.get_addr())
-            .await
-            .map_err(|e| format!("TCP connection to '{}:{}' failed: {e}", host, port))?
+        TcpStream::connect(tib_config.get_addr()).await.map_err(|e| e.to_string())
     };
 
-    tcp.set_nodelay(true)
-        .map_err(|e| format!("Failed to set TCP_NODELAY: {e}"))?;
+    let stream = match tcp_result {
+        Ok(tcp) => {
+            tcp.set_nodelay(true)
+                .map_err(|e| format!("Failed to set TCP_NODELAY: {e}"))?;
+            TransportStream::Tcp(tcp)
+        }
+        Err(tcp_err) => {
+            #[cfg(windows)]
+            {
+                if host.eq_ignore_ascii_case("localhost") || host == "." || host == "127.0.0.1" {
+                    let pipe_name = match &instance {
+                        Some(inst) => format!(r"\\.\pipe\MSSQL${}\sql\query", inst),
+                        None => r"\\.\pipe\sql\query".to_string(),
+                    };
+                    
+                    match tokio::net::windows::named_pipe::ClientOptions::new().open(&pipe_name) {
+                        Ok(pipe) => TransportStream::NamedPipe(pipe),
+                        Err(pipe_err) => return Err(format!("TCP connection failed ({}) and Named Pipe fallback failed ({})", tcp_err, pipe_err)),
+                    }
+                } else {
+                    return Err(format!("TCP connection to '{}:{}' failed: {}", host, port, tcp_err));
+                }
+            }
+            #[cfg(not(windows))]
+            return Err(format!("TCP connection to '{}:{}' failed: {}", host, port, tcp_err));
+        }
+    };
 
-    let client = Client::connect(tib_config, tcp.compat_write())
+    let client = Client::connect(tib_config, stream.compat_write())
         .await
         .map_err(|e| format!("SQL Server connection failed: {e}"))?;
 

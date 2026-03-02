@@ -1,6 +1,8 @@
 interface Props {
   connected: boolean;
   capturing: boolean;
+  starting: boolean;
+  stopping: boolean;
   queryCount: number;
   filterText: string;
   advancedFilterCount: number;
@@ -27,19 +29,20 @@ export default function Toolbar(props: Props) {
           {!props.capturing ? (
             <button
               class={`${btnBase} bg-emerald-600 enabled:hover:bg-emerald-500 text-white`}
-              disabled={!props.connected}
+              disabled={!props.connected || props.starting}
               onClick={props.onStartCapture}
             >
-              <i class="fa-solid fa-play text-[10px]" />
-              Start
+              <i class={`fa-solid ${props.starting ? "fa-spinner fa-spin" : "fa-play"} text-[10px]`} />
+              {props.starting ? "Starting..." : "Start"}
             </button>
           ) : (
             <button
               class={`${btnBase} bg-red-600 enabled:hover:bg-red-500 text-white`}
+              disabled={props.stopping}
               onClick={props.onStopCapture}
             >
-              <i class="fa-solid fa-stop text-[10px]" />
-              Stop
+              <i class={`fa-solid ${props.stopping ? "fa-spinner fa-spin" : "fa-stop"} text-[10px]`} />
+              {props.stopping ? "Stopping..." : "Stop"}
             </button>
           )}
 

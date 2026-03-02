@@ -78,6 +78,8 @@ export default function App() {
     })()
   );
   const [showAdvancedFilter, setShowAdvancedFilter] = createSignal(false);
+  const [starting, setStarting] = createSignal(false);
+  const [stopping, setStopping] = createSignal(false);
 
   createEffect(() => {
     localStorage.setItem("advanced-filters", JSON.stringify(advancedFilters()));
@@ -199,19 +201,25 @@ export default function App() {
   }
 
   async function handleStartCapture() {
+    setStarting(true);
     try {
       await invoke("start_capture");
     } catch (e) {
       setStatus((s) => ({ ...s, error: String(e) }));
       setShowConnection(true);
+    } finally {
+      setStarting(false);
     }
   }
 
   async function handleStopCapture() {
+    setStopping(true);
     try {
       await invoke("stop_capture");
     } catch (e) {
       setStatus((s) => ({ ...s, error: String(e) }));
+    } finally {
+      setStopping(false);
     }
   }
 
@@ -398,6 +406,8 @@ export default function App() {
         <Toolbar
           connected={status().connected}
           capturing={status().capturing}
+          starting={starting()}
+          stopping={stopping()}
           queryCount={queries.length}
           filterText={filterText()}
           advancedFilterCount={advancedFilters().length}

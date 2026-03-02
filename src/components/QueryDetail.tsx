@@ -85,7 +85,7 @@ function ResultsTable(props: { data: QueryResultData }) {
                   <tr class={idx() % 2 === 0 ? "bg-slate-900/30" : "bg-slate-900/60"}>
                     <For each={row}>
                       {(cell) => (
-                        <td class="px-3 py-1 text-slate-300 font-mono text-[11px] whitespace-nowrap border-b border-slate-800/50">
+                        <td class="px-3 py-1 text-slate-300 font-mono text-[11px] whitespace-pre-wrap break-words border-b border-slate-800/50">
                           {cell === null ? <span class="text-slate-600 italic">NULL</span> : String(cell)}
                         </td>
                       )}
