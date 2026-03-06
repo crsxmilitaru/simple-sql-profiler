@@ -60,7 +60,15 @@ export default function App() {
       return "smart";
     })()
   );
-  const [deduplicateRepeats, setDeduplicateRepeats] = createSignal(localStorage.getItem("deduplicate-repeats") !== "false");
+  const [deduplicateRepeats, setDeduplicateRepeats] = createSignal(
+    (() => {
+      const hasExplicitPreference = localStorage.getItem("deduplicate-repeats-explicit") === "true";
+      if (!hasExplicitPreference) {
+        return false;
+      }
+      return localStorage.getItem("deduplicate-repeats") === "true";
+    })()
+  );
   const [updateStatus, setUpdateStatus] = createSignal<UpdateStatus>({
     checking: false,
     message: null,
@@ -87,10 +95,6 @@ export default function App() {
 
   createEffect(() => {
     localStorage.setItem("auto-scroll", String(autoScroll()));
-  });
-
-  createEffect(() => {
-    localStorage.setItem("deduplicate-repeats", String(deduplicateRepeats()));
   });
 
   const selectedQuery = () => queries.find((q) => q.id === selectedId()) ?? null;
@@ -122,9 +126,17 @@ export default function App() {
     });
 
     if (deduplicateRepeats()) {
-      result = result.filter(
-        (q, i, arr) => i === 0 || q.sql_text !== arr[i - 1].sql_text
-      );
+      result = result.filter((q, i, arr) => {
+        if (i === 0) return true;
+        const prev = arr[i - 1];
+        const currentText = q.current_statement || q.sql_text;
+        const previousText = prev.current_statement || prev.sql_text;
+        const sameFingerprint =
+          currentText === previousText &&
+          q.database_name === prev.database_name &&
+          q.event_name === prev.event_name;
+        return !sameFingerprint;
+      });
     }
 
     return result;
@@ -351,6 +363,15 @@ export default function App() {
     setSelectedId(null);
   }
 
+  function handleToggleDeduplicateRepeats() {
+    setDeduplicateRepeats((current) => {
+      const next = !current;
+      localStorage.setItem("deduplicate-repeats", String(next));
+      localStorage.setItem("deduplicate-repeats-explicit", "true");
+      return next;
+    });
+  }
+
   return (
     <div class="h-screen flex flex-col bg-slate-900">
       <TitleBar
@@ -420,7 +441,7 @@ export default function App() {
           onFilterChange={setFilterText}
           onOpenAdvancedFilter={() => setShowAdvancedFilter(true)}
           onToggleAutoScroll={() => setAutoScroll((s) => s === "smart" ? "on" : s === "on" ? "off" : "smart")}
-          onToggleDeduplicateRepeats={() => setDeduplicateRepeats((s) => !s)}
+          onToggleDeduplicateRepeats={handleToggleDeduplicateRepeats}
         />
 
         {/* Main Content Area */}

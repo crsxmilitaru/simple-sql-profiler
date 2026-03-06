@@ -40,8 +40,8 @@ pub fn save(app: &tauri::AppHandle, conn: &SavedConnection, password: &str) -> R
             .set_password(password)
             .map_err(|e| format!("Failed to save password: {e}"))?;
     } else {
-        let _ = keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER)
-            .and_then(|e| e.delete_credential());
+        let _ =
+            keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER).and_then(|e| e.delete_credential());
     }
 
     Ok(())

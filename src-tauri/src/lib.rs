@@ -3,7 +3,7 @@ mod profiler;
 mod settings;
 
 use db::ConnectionConfig;
-use profiler::{ProfilerCommand, QueryResultData, spawn_profiler_task};
+use profiler::{spawn_profiler_task, ProfilerCommand, QueryResultData};
 use tauri::Manager;
 use tokio::sync::{mpsc, oneshot};
 
@@ -47,9 +47,7 @@ async fn connect_to_server(
 }
 
 #[tauri::command]
-async fn disconnect_from_server(
-    state: tauri::State<'_, AppState>,
-) -> Result<(), String> {
+async fn disconnect_from_server(state: tauri::State<'_, AppState>) -> Result<(), String> {
     let (reply_tx, reply_rx) = oneshot::channel();
     state
         .tx
@@ -57,15 +55,11 @@ async fn disconnect_from_server(
         .await
         .map_err(|e| format!("Internal error: {e}"))?;
 
-    reply_rx
-        .await
-        .map_err(|e| format!("Internal error: {e}"))?
+    reply_rx.await.map_err(|e| format!("Internal error: {e}"))?
 }
 
 #[tauri::command]
-async fn start_capture(
-    state: tauri::State<'_, AppState>,
-) -> Result<(), String> {
+async fn start_capture(state: tauri::State<'_, AppState>) -> Result<(), String> {
     let (reply_tx, reply_rx) = oneshot::channel();
     state
         .tx
@@ -73,15 +67,11 @@ async fn start_capture(
         .await
         .map_err(|e| format!("Internal error: {e}"))?;
 
-    reply_rx
-        .await
-        .map_err(|e| format!("Internal error: {e}"))?
+    reply_rx.await.map_err(|e| format!("Internal error: {e}"))?
 }
 
 #[tauri::command]
-async fn stop_capture(
-    state: tauri::State<'_, AppState>,
-) -> Result<(), String> {
+async fn stop_capture(state: tauri::State<'_, AppState>) -> Result<(), String> {
     let (reply_tx, reply_rx) = oneshot::channel();
     state
         .tx
@@ -89,9 +79,7 @@ async fn stop_capture(
         .await
         .map_err(|e| format!("Internal error: {e}"))?;
 
-    reply_rx
-        .await
-        .map_err(|e| format!("Internal error: {e}"))?
+    reply_rx.await.map_err(|e| format!("Internal error: {e}"))?
 }
 
 #[tauri::command]
@@ -109,19 +97,16 @@ async fn execute_query(
         .await
         .map_err(|e| format!("Internal error: {e}"))?;
 
-    reply_rx
-        .await
-        .map_err(|e| format!("Internal error: {e}"))?
+    reply_rx.await.map_err(|e| format!("Internal error: {e}"))?
 }
 
 #[tauri::command]
-async fn load_connection(
-    app: tauri::AppHandle,
-) -> Result<serde_json::Value, String> {
+async fn load_connection(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
     let (conn, password) = settings::load(&app)?;
-    let mut val = serde_json::to_value(&conn)
-        .map_err(|e| format!("Serialization error: {e}"))?;
-    val.as_object_mut().unwrap().insert("password".into(), password.into());
+    let mut val = serde_json::to_value(&conn).map_err(|e| format!("Serialization error: {e}"))?;
+    val.as_object_mut()
+        .unwrap()
+        .insert("password".into(), password.into());
     Ok(val)
 }
 

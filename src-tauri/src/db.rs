@@ -69,8 +69,21 @@ impl AsyncWrite for TransportStream {
 }
 
 pub type SqlClient = Client<Compat<TransportStream>>;
+const PROFILER_INTERNAL_APP_NAME: &str = "SimpleSQLProfiler";
+const QUERY_WINDOW_APP_NAME: &str = "SimpleSQLQueryWindow";
 
 pub async fn connect(config: &ConnectionConfig) -> Result<SqlClient, String> {
+    connect_with_app_name(config, PROFILER_INTERNAL_APP_NAME).await
+}
+
+pub async fn connect_for_query_window(config: &ConnectionConfig) -> Result<SqlClient, String> {
+    connect_with_app_name(config, QUERY_WINDOW_APP_NAME).await
+}
+
+async fn connect_with_app_name(
+    config: &ConnectionConfig,
+    application_name: &str,
+) -> Result<SqlClient, String> {
     let mut tib_config = Config::new();
 
     let (host, port, instance) = parse_server_name(&config.server_name)?;
@@ -107,12 +120,16 @@ pub async fn connect(config: &ConnectionConfig) -> Result<SqlClient, String> {
         tib_config.trust_cert();
     }
 
-    tib_config.application_name("SimpleSQLProfiler");
+    tib_config.application_name(application_name);
 
     let tcp_result = if instance.is_some() {
-        TcpStream::connect_named(&tib_config).await.map_err(|e| e.to_string())
+        TcpStream::connect_named(&tib_config)
+            .await
+            .map_err(|e| e.to_string())
     } else {
-        TcpStream::connect(tib_config.get_addr()).await.map_err(|e| e.to_string())
+        TcpStream::connect(tib_config.get_addr())
+            .await
+            .map_err(|e| e.to_string())
     };
 
     let stream = match tcp_result {
@@ -129,17 +146,28 @@ pub async fn connect(config: &ConnectionConfig) -> Result<SqlClient, String> {
                         Some(inst) => format!(r"\\.\pipe\MSSQL${}\sql\query", inst),
                         None => r"\\.\pipe\sql\query".to_string(),
                     };
-                    
+
                     match tokio::net::windows::named_pipe::ClientOptions::new().open(&pipe_name) {
                         Ok(pipe) => TransportStream::NamedPipe(pipe),
-                        Err(pipe_err) => return Err(format!("TCP connection failed ({}) and Named Pipe fallback failed ({})", tcp_err, pipe_err)),
+                        Err(pipe_err) => {
+                            return Err(format!(
+                                "TCP connection failed ({}) and Named Pipe fallback failed ({})",
+                                tcp_err, pipe_err
+                            ))
+                        }
                     }
                 } else {
-                    return Err(format!("TCP connection to '{}:{}' failed: {}", host, port, tcp_err));
+                    return Err(format!(
+                        "TCP connection to '{}:{}' failed: {}",
+                        host, port, tcp_err
+                    ));
                 }
             }
             #[cfg(not(windows))]
-            return Err(format!("TCP connection to '{}:{}' failed: {}", host, port, tcp_err));
+            return Err(format!(
+                "TCP connection to '{}:{}' failed: {}",
+                host, port, tcp_err
+            ));
         }
     };
 

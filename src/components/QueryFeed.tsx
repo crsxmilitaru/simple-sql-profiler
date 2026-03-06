@@ -77,8 +77,11 @@ export default function QueryFeed(props: Props) {
   }
 
   function formatEventType(eventName: string): string {
+    if (eventName.includes("login") || eventName.includes("logout") || eventName.includes("connection")) return "AUDIT";
     if (eventName.includes("rpc")) return "RPC";
     if (eventName.includes("batch")) return "BATCH";
+    if (eventName.includes("statement")) return "STMT";
+    if (eventName.includes("prepared") || eventName.includes("prepare")) return "PREP";
     return eventName;
   }
 
