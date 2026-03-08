@@ -15,7 +15,12 @@ import TitleBar from "./components/TitleBar.tsx";
 import Toolbar from "./components/Toolbar.tsx";
 import UpdateDialog from "./components/UpdateDialog.tsx";
 import { evaluateFilter, type AdvancedFilterCondition } from "./lib/advancedFilters.ts";
-import type { ConnectionConfig, ProfilerStatus, QueryEvent } from "./lib/types.ts";
+import type {
+  CaptureStorageMode,
+  ConnectionConfig,
+  ProfilerStatus,
+  QueryEvent,
+} from "./lib/types.ts";
 
 type UpdateMessageTone = "info" | "success" | "error";
 
@@ -40,11 +45,27 @@ const INVALID_UPDATER_SIGNATURE_MESSAGE =
 const NO_RELEASE_METADATA_MESSAGE =
   "No published update metadata found yet.";
 
+function eventFamily(eventName: string): string {
+  if (eventName.includes("login") || eventName.includes("logout") || eventName.includes("connection")) return "AUDIT";
+  if (eventName.includes("rpc")) return "RPC";
+  if (eventName.includes("module")) return "CALL";
+  if (eventName.includes("batch")) return "BATCH";
+  if (eventName.includes("statement")) return "STMT";
+  if (eventName.includes("prepared") || eventName.includes("prepare")) return "PREP";
+  return eventName;
+}
+
+function eventSqlText(query: QueryEvent): string {
+  return query.current_statement || query.sql_text;
+}
+
 export default function App() {
   const [status, setStatus] = createSignal<ProfilerStatus>({
     connected: false,
     capturing: false,
     error: null,
+    note: null,
+    toast: null,
   });
   const [queries, setQueries] = createStore<QueryEvent[]>([]);
   const [selectedId, setSelectedId] = createSignal<string | null>(null);
@@ -69,6 +90,18 @@ export default function App() {
       return localStorage.getItem("deduplicate-repeats") === "true";
     })()
   );
+  const [showCompletedOnly, setShowCompletedOnly] = createSignal(
+    (() => {
+      const stored = localStorage.getItem("show-completed-only");
+      return stored === null ? true : stored === "true";
+    })()
+  );
+  const [captureStorageMode, setCaptureStorageMode] = createSignal<CaptureStorageMode>(
+    (() => {
+      const stored = localStorage.getItem("capture-storage-mode");
+      return stored === "in_memory" ? "in_memory" : "files";
+    })()
+  );
   const [updateStatus, setUpdateStatus] = createSignal<UpdateStatus>({
     checking: false,
     message: null,
@@ -88,6 +121,21 @@ export default function App() {
   const [showAdvancedFilter, setShowAdvancedFilter] = createSignal(false);
   const [starting, setStarting] = createSignal(false);
   const [stopping, setStopping] = createSignal(false);
+  const [toastMessage, setToastMessage] = createSignal<string | null>(null);
+
+  let toastDismissTimeout: number | undefined;
+
+  function showToast(message: string) {
+    if (toastDismissTimeout !== undefined) {
+      window.clearTimeout(toastDismissTimeout);
+    }
+
+    setToastMessage(message);
+    toastDismissTimeout = window.setTimeout(() => {
+      setToastMessage(null);
+      toastDismissTimeout = undefined;
+    }, 3600);
+  }
 
   createEffect(() => {
     localStorage.setItem("advanced-filters", JSON.stringify(advancedFilters()));
@@ -97,13 +145,43 @@ export default function App() {
     localStorage.setItem("auto-scroll", String(autoScroll()));
   });
 
+  createEffect(() => {
+    localStorage.setItem("show-completed-only", String(showCompletedOnly()));
+  });
+
+  createEffect(() => {
+    localStorage.setItem("capture-storage-mode", captureStorageMode());
+  });
+
   const selectedQuery = () => queries.find((q) => q.id === selectedId()) ?? null;
+  const activeFilterSummary = createMemo(() => {
+    const parts: string[] = [];
+
+    if (filterText().trim().length > 0) {
+      parts.push(`Search: "${filterText().trim()}"`);
+    }
+    if (advancedFilters().length > 0) {
+      parts.push(`Advanced: ${advancedFilters().length}`);
+    }
+    if (showCompletedOnly()) {
+      parts.push("Completed only");
+    }
+    if (deduplicateRepeats()) {
+      parts.push("Deduplicate");
+    }
+
+    return parts.length > 0 ? parts.join(" | ") : null;
+  });
 
   const filteredQueries = createMemo(() => {
     const filter = filterText().toLowerCase();
     const advFilters = advancedFilters();
 
     let result = queries.filter((q) => {
+      if (showCompletedOnly() && q.event_status !== "completed") {
+        return false;
+      }
+
       // Basic text search (OR across common fields)
       if (filter) {
         const matchesText =
@@ -126,17 +204,50 @@ export default function App() {
     });
 
     if (deduplicateRepeats()) {
-      result = result.filter((q, i, arr) => {
-        if (i === 0) return true;
-        const prev = arr[i - 1];
-        const currentText = q.current_statement || q.sql_text;
-        const previousText = prev.current_statement || prev.sql_text;
+      const deduped: QueryEvent[] = [];
+
+      for (const query of result) {
+        const previous = deduped[deduped.length - 1];
+        if (!previous) {
+          deduped.push(query);
+          continue;
+        }
+
         const sameFingerprint =
-          currentText === previousText &&
-          q.database_name === prev.database_name &&
-          q.event_name === prev.event_name;
-        return !sameFingerprint;
-      });
+          eventSqlText(query) === eventSqlText(previous) &&
+          query.database_name === previous.database_name &&
+          query.session_id === previous.session_id &&
+          eventFamily(query.event_name) === eventFamily(previous.event_name);
+
+        if (!sameFingerprint) {
+          deduped.push(query);
+          continue;
+        }
+
+        const sameTimestamp = query.start_time === previous.start_time;
+        const pairedLiveEvents =
+          sameTimestamp &&
+          query.event_status !== previous.event_status;
+        const exactDuplicate =
+          sameTimestamp &&
+          query.event_name === previous.event_name &&
+          query.event_status === previous.event_status;
+
+        if (pairedLiveEvents) {
+          if (previous.event_status === "starting" && query.event_status === "completed") {
+            deduped[deduped.length - 1] = query;
+          }
+          continue;
+        }
+
+        if (exactDuplicate) {
+          continue;
+        }
+
+        deduped.push(query);
+      }
+
+      result = deduped;
     }
 
     return result;
@@ -152,6 +263,9 @@ export default function App() {
       unlistenStatus?.();
       if (updateTimeout !== undefined) {
         clearTimeout(updateTimeout);
+      }
+      if (toastDismissTimeout !== undefined) {
+        clearTimeout(toastDismissTimeout);
       }
     });
 
@@ -178,7 +292,13 @@ export default function App() {
       unlistenStatus = await listen<ProfilerStatus>(
         "profiler-status",
         (event) => {
-          setStatus(event.payload);
+          if (event.payload.toast) {
+            showToast(event.payload.toast);
+          }
+          setStatus({
+            ...event.payload,
+            toast: null,
+          });
           if (event.payload.connected) {
             setShowConnection(false);
           } else if (event.payload.capturing) {
@@ -205,7 +325,13 @@ export default function App() {
   async function handleDisconnect() {
     try {
       await invoke("disconnect_from_server");
-      setStatus({ connected: false, capturing: false, error: null });
+      setStatus({
+        connected: false,
+        capturing: false,
+        error: null,
+        note: null,
+        toast: null,
+      });
       setShowConnection(true);
     } catch (e) {
       setStatus((s) => ({ ...s, error: String(e) }));
@@ -215,7 +341,11 @@ export default function App() {
   async function handleStartCapture() {
     setStarting(true);
     try {
-      await invoke("start_capture");
+      await invoke("start_capture", {
+        options: {
+          storageMode: captureStorageMode(),
+        },
+      });
     } catch (e) {
       setStatus((s) => ({ ...s, error: String(e) }));
       setShowConnection(true);
@@ -372,6 +502,15 @@ export default function App() {
     });
   }
 
+  function handleResetViewFilters() {
+    setFilterText("");
+    setAdvancedFilters([]);
+    setDeduplicateRepeats(false);
+    localStorage.setItem("deduplicate-repeats", "false");
+    localStorage.setItem("deduplicate-repeats-explicit", "true");
+    setShowCompletedOnly(false);
+  }
+
   return (
     <div class="h-screen flex flex-col bg-slate-900">
       <TitleBar
@@ -382,7 +521,7 @@ export default function App() {
         aboutDisabled={showAbout()}
       />
 
-      <div class="flex-1 flex flex-col min-h-0 relative">
+      <div class="flex-1 flex flex-col min-h-0 min-w-0 relative overflow-hidden">
         {/* Connection Form (overlay) */}
         {showConnection() && (
           <ConnectionForm
@@ -430,11 +569,21 @@ export default function App() {
           starting={starting()}
           stopping={stopping()}
           queryCount={queries.length}
+          visibleQueryCount={filteredQueries().length}
           filterText={filterText()}
           advancedFilterCount={advancedFilters().length}
           autoScroll={autoScroll()}
           deduplicateRepeats={deduplicateRepeats()}
+          showCompletedOnly={showCompletedOnly()}
+          hasViewFilters={
+            filterText().trim().length > 0 ||
+            advancedFilters().length > 0 ||
+            deduplicateRepeats() ||
+            showCompletedOnly()
+          }
+          captureStorageMode={captureStorageMode()}
           error={status().connected ? status().error : null}
+          note={status().note}
           onStartCapture={handleStartCapture}
           onStopCapture={handleStopCapture}
           onClear={handleClear}
@@ -442,14 +591,19 @@ export default function App() {
           onOpenAdvancedFilter={() => setShowAdvancedFilter(true)}
           onToggleAutoScroll={() => setAutoScroll((s) => s === "smart" ? "on" : s === "on" ? "off" : "smart")}
           onToggleDeduplicateRepeats={handleToggleDeduplicateRepeats}
+          onToggleCompletedOnly={() => setShowCompletedOnly((current) => !current)}
+          onResetViewFilters={handleResetViewFilters}
+          onCaptureStorageModeChange={setCaptureStorageMode}
         />
 
         {/* Main Content Area */}
-        <div class="flex-1 flex flex-row min-h-0 relative">
+        <div class="flex-1 flex flex-row min-h-0 min-w-0 relative overflow-hidden">
           {/* List and Details */}
-          <div class="flex-1 flex flex-col min-h-0 relative">
+          <div class="flex-1 flex flex-col min-h-0 min-w-0 relative overflow-hidden">
             <QueryFeed
               queries={filteredQueries()}
+              totalQueryCount={queries.length}
+              activeFilterSummary={activeFilterSummary()}
               selectedId={selectedId()}
               autoScroll={autoScroll()}
               connected={status().connected}
@@ -470,6 +624,18 @@ export default function App() {
         </div>
       </div>
       <ContextMenu />
+      <Show when={toastMessage()} keyed>
+        {(message) => (
+          <div class="pointer-events-none fixed bottom-4 right-4 z-[80] max-w-sm">
+            <div class="rounded-lg border border-emerald-400/25 bg-emerald-500/12 px-4 py-3 text-sm text-emerald-100 shadow-[0_18px_48px_rgba(3,105,61,0.32)] backdrop-blur-md animate-in fade-in slide-in-from-bottom-2 duration-200">
+              <div class="flex items-start gap-3">
+                <i class="fa-solid fa-circle-check mt-0.5 text-emerald-300" />
+                <div class="leading-relaxed">{message}</div>
+              </div>
+            </div>
+          </div>
+        )}
+      </Show>
     </div>
   );
 }

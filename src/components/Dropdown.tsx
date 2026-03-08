@@ -10,6 +10,10 @@ interface Props {
   value: string;
   options: Option[];
   onChange: (value: string) => void;
+  disabled?: boolean;
+  title?: string;
+  class?: string;
+  triggerClass?: string;
 }
 
 export default function Dropdown(props: Props) {
@@ -51,16 +55,20 @@ export default function Dropdown(props: Props) {
   });
 
   function toggle() {
+    if (props.disabled) return;
     updateCoords();
     setOpen((s) => !s);
   }
 
   function select(value: string) {
+    if (props.disabled) return;
     props.onChange(value);
     setOpen(false);
   }
 
   function handleKeyDown(e: KeyboardEvent) {
+    if (props.disabled) return;
+
     if (e.key === "Escape") {
       setOpen(false);
       return;
@@ -90,12 +98,17 @@ export default function Dropdown(props: Props) {
   }
 
   return (
-    <div ref={containerRef} class="dropdown-container relative">
+    <div
+      ref={containerRef}
+      class={`dropdown-container relative ${props.class ?? ""}`}
+    >
       <button
         ref={triggerRef}
         type="button"
-        class="dropdown-trigger"
+        class={`dropdown-trigger ${props.triggerClass ?? ""}`}
         classList={{ "dropdown-trigger--open": open() }}
+        disabled={props.disabled}
+        title={props.title}
         onClick={toggle}
         onKeyDown={handleKeyDown}
       >

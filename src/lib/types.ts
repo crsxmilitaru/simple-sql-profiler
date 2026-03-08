@@ -8,6 +8,12 @@ export interface ConnectionConfig {
   trust_cert: boolean;
 }
 
+export type CaptureStorageMode = "in_memory" | "files";
+
+export interface CaptureOptions {
+  storageMode?: CaptureStorageMode;
+}
+
 export interface QueryEvent {
   id: string;
   session_id: number;
@@ -26,7 +32,7 @@ export interface QueryEvent {
   host_name: string;
   program_name: string;
   captured_at: string;
-  event_status: "completed";
+  event_status: "starting" | "completed";
 }
 
 export interface QueryResultData {
@@ -38,4 +44,6 @@ export interface ProfilerStatus {
   connected: boolean;
   capturing: boolean;
   error: string | null;
+  note: string | null;
+  toast: string | null;
 }

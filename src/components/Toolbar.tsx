@@ -1,14 +1,22 @@
+import type { CaptureStorageMode } from "../lib/types.ts";
+import Dropdown from "./Dropdown.tsx";
+
 interface Props {
   connected: boolean;
   capturing: boolean;
   starting: boolean;
   stopping: boolean;
   queryCount: number;
+  visibleQueryCount: number;
   filterText: string;
   advancedFilterCount: number;
   autoScroll: "on" | "off" | "smart";
   deduplicateRepeats: boolean;
+  showCompletedOnly: boolean;
+  hasViewFilters: boolean;
+  captureStorageMode: CaptureStorageMode;
   error: string | null;
+  note: string | null;
   onStartCapture: () => void;
   onStopCapture: () => void;
   onClear: () => void;
@@ -16,6 +24,9 @@ interface Props {
   onOpenAdvancedFilter: () => void;
   onToggleAutoScroll: () => void;
   onToggleDeduplicateRepeats: () => void;
+  onToggleCompletedOnly: () => void;
+  onResetViewFilters: () => void;
+  onCaptureStorageModeChange: (value: CaptureStorageMode) => void;
 }
 
 export default function Toolbar(props: Props) {
@@ -45,6 +56,21 @@ export default function Toolbar(props: Props) {
               {props.stopping ? "Stopping..." : "Stop"}
             </button>
           )}
+
+          <Dropdown
+            value={props.captureStorageMode}
+            options={[
+              { value: "in_memory", label: "In-memory" },
+              { value: "files", label: "Trace files" },
+            ]}
+            disabled={props.capturing || props.starting || props.stopping}
+            title="Choose how Extended Events are stored while capture is running."
+            class="w-[132px]"
+            triggerClass="h-[30px] px-3 py-0 text-xs leading-none font-medium bg-slate-900/80 disabled:opacity-40 disabled:cursor-not-allowed"
+            onChange={(value) =>
+              props.onCaptureStorageModeChange(value as CaptureStorageMode)
+            }
+          />
 
           <button
             class={`${btnBase} bg-slate-700 enabled:hover:bg-slate-600 text-slate-200`}
@@ -83,6 +109,25 @@ export default function Toolbar(props: Props) {
               </span>
             )}
           </button>
+
+          <div class="hidden xl:flex items-center gap-2 shrink-0">
+            <div class={`px-2.5 h-[30px] rounded border text-[11px] font-medium flex items-center ${props.hasViewFilters
+              ? "bg-amber-500/10 text-amber-300 border-amber-400/20"
+              : "bg-slate-800 text-slate-500 border-slate-700"
+              }`}>
+              Showing {props.visibleQueryCount.toLocaleString()} / {props.queryCount.toLocaleString()}
+            </div>
+
+            {props.hasViewFilters && (
+              <button
+                class="px-3 h-[30px] rounded border border-slate-700 bg-slate-800 text-slate-300 text-xs font-medium hover:border-slate-600 hover:text-slate-100 transition-colors"
+                onClick={props.onResetViewFilters}
+                title="Clear text search, advanced filters, completed-only, and deduplication"
+              >
+                Show all
+              </button>
+            )}
+          </div>
         </div>
 
         <button
@@ -95,6 +140,18 @@ export default function Toolbar(props: Props) {
         >
           <i class="fa-solid fa-filter text-[10px]" />
           Deduplicate
+        </button>
+
+        <button
+          class={`${btnBase} ${props.showCompletedOnly
+            ? "bg-emerald-500/15 text-emerald-300 border-emerald-400/30"
+            : "bg-slate-700 text-slate-400"
+            }`}
+          onClick={props.onToggleCompletedOnly}
+          title="Show only completed events marked with the green dot"
+        >
+          <i class={`fa-solid fa-filter text-[10px] ${props.showCompletedOnly ? "text-emerald-300" : "text-emerald-400/80"}`} />
+          Completed
         </button>
 
         <button
@@ -121,6 +178,15 @@ export default function Toolbar(props: Props) {
           <i class="fa-solid fa-circle-exclamation mt-0.5" />
           <div class="flex-1 leading-relaxed">
             {props.error}
+          </div>
+        </div>
+      )}
+
+      {props.note && (
+        <div class="mx-3 mb-2 p-2.5 bg-sky-500/10 border border-sky-500/20 rounded text-xs text-sky-300 select-text flex items-start gap-2 animate-in fade-in slide-in-from-top-1 duration-200">
+          <i class="fa-solid fa-circle-info mt-0.5" />
+          <div class="flex-1 leading-relaxed">
+            {props.note}
           </div>
         </div>
       )}

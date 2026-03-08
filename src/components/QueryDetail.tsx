@@ -23,13 +23,13 @@ function SqlBlock(props: { text: string; label?: string; class?: string }) {
   }
 
   return (
-    <div class={`relative group ${props.class || ""}`}>
+    <div class={`relative group w-full min-w-0 overflow-hidden ${props.class || ""}`}>
       {props.label && (
         <div class="text-[10px] text-slate-500 uppercase tracking-wider mb-1.5 font-medium">
           {props.label}
         </div>
       )}
-      <div class="relative bg-slate-900/50 rounded-lg p-4 border border-slate-700/50">
+      <div class="relative w-full min-w-0 overflow-hidden bg-slate-900/50 rounded-lg p-4 border border-slate-700/50">
         <button
           onClick={handleCopy}
           class="absolute top-2 right-2 px-2 py-1 rounded bg-slate-800 border border-slate-700 text-[10px] text-slate-400 opacity-0 group-hover:opacity-100 transition-all hover:text-slate-200 hover:border-slate-600 active:scale-95 z-10"
@@ -44,7 +44,7 @@ function SqlBlock(props: { text: string; label?: string; class?: string }) {
             </span>
           )}
         </button>
-        <pre class="text-xs font-mono text-slate-200 whitespace-pre-wrap break-all leading-relaxed selection:bg-blue-500/30">
+        <pre class="max-w-full text-xs font-mono text-slate-200 whitespace-pre-wrap break-all leading-relaxed selection:bg-blue-500/30">
           {props.text}
         </pre>
       </div>
@@ -53,12 +53,32 @@ function SqlBlock(props: { text: string; label?: string; class?: string }) {
 }
 
 function ResultsTable(props: { data: QueryResultData }) {
+  const columnWidths = props.data.columns.map((column, columnIndex) => {
+    let maxLength = column.length;
+
+    for (const row of props.data.rows) {
+      const cell = row[columnIndex];
+      const value = cell === null ? "NULL" : String(cell);
+      maxLength = Math.max(maxLength, value.length);
+    }
+
+    return Math.min(Math.max(maxLength * 8 + 40, 120), 420);
+  });
+
+  const totalWidth = Math.max(
+    columnWidths.reduce((sum, width) => sum + width, 0),
+    1120
+  );
+
   return (
-    <div>
+    <div class="w-full min-w-0 max-w-full self-stretch overflow-hidden">
       <div class="text-[10px] text-slate-500 uppercase tracking-wider mb-1.5 font-medium">
         Results ({props.data.rows.length} row{props.data.rows.length !== 1 ? "s" : ""})
       </div>
-      <div class="bg-slate-900/50 rounded-lg border border-slate-700/50 overflow-auto max-h-[300px]">
+      <div
+        class="results-scroll block w-full min-w-0 max-w-full overflow-x-auto overflow-y-auto rounded-lg border border-slate-700/50 bg-slate-900/50 max-h-[420px] min-h-[240px]"
+        style={{ "scrollbar-gutter": "stable both-edges" }}
+      >
         <Show
           when={props.data.columns.length > 0}
           fallback={
@@ -67,34 +87,43 @@ function ResultsTable(props: { data: QueryResultData }) {
             </div>
           }
         >
-          <table class="w-full text-xs">
-            <thead class="sticky top-0">
-              <tr class="bg-slate-800 text-slate-400">
-                <For each={props.data.columns}>
-                  {(col) => (
-                    <th class="px-3 py-1.5 text-left font-semibold text-[10px] uppercase tracking-wider border-b border-slate-700 whitespace-nowrap">
-                      {col}
-                    </th>
-                  )}
-                </For>
-              </tr>
-            </thead>
-            <tbody>
-              <For each={props.data.rows}>
-                {(row, idx) => (
-                  <tr class={idx() % 2 === 0 ? "bg-slate-900/30" : "bg-slate-900/60"}>
-                    <For each={row}>
-                      {(cell) => (
-                        <td class="px-3 py-1 text-slate-300 font-mono text-[11px] whitespace-pre-wrap break-words border-b border-slate-800/50">
-                          {cell === null ? <span class="text-slate-600 italic">NULL</span> : String(cell)}
-                        </td>
-                      )}
-                    </For>
-                  </tr>
+          <div
+            class="flex min-w-max flex-col"
+            style={{
+              width: `${totalWidth}px`,
+              minWidth: `${totalWidth}px`,
+            }}
+          >
+            <div class="sticky top-0 z-10 flex min-w-max bg-slate-800 text-slate-400">
+              <For each={props.data.columns}>
+                {(col, columnIndex) => (
+                  <div
+                    class="shrink-0 px-3 py-1.5 text-left font-semibold text-[10px] uppercase tracking-wider border-b border-slate-700 whitespace-nowrap"
+                    style={{ width: `${columnWidths[columnIndex()]}px` }}
+                  >
+                    {col}
+                  </div>
                 )}
               </For>
-            </tbody>
-          </table>
+            </div>
+
+            <For each={props.data.rows}>
+              {(row, rowIndex) => (
+                <div class={`flex min-w-max ${rowIndex() % 2 === 0 ? "bg-slate-900/30" : "bg-slate-900/60"}`}>
+                  <For each={row}>
+                    {(cell, columnIndex) => (
+                      <div
+                        class="shrink-0 px-3 py-1.5 text-slate-300 font-mono text-[11px] whitespace-nowrap border-b border-slate-800/50"
+                        style={{ width: `${columnWidths[columnIndex()]}px` }}
+                      >
+                        {cell === null ? <span class="text-slate-600 italic">NULL</span> : String(cell)}
+                      </div>
+                    )}
+                  </For>
+                </div>
+              )}
+            </For>
+          </div>
         </Show>
       </div>
     </div>
@@ -200,7 +229,7 @@ export default function QueryDetail(props: Props) {
 
   return (
     <div
-      class={`relative border-t border-slate-700 bg-slate-800 flex flex-col shrink-0 select-text transition-all duration-200 ease-out ${!mounted() ? "translate-y-8 opacity-0" : "translate-y-0 opacity-100"
+      class={`relative w-full max-w-full min-w-0 overflow-hidden border-t border-slate-700 bg-slate-800 flex flex-col shrink-0 select-text transition-all duration-200 ease-out ${!mounted() ? "translate-y-8 opacity-0" : "translate-y-0 opacity-100"
         }`}
       style={{
         height: `${height()}px`
@@ -263,8 +292,12 @@ export default function QueryDetail(props: Props) {
                   : props.query.event_name === "rpc_completed" ||
                     props.query.event_name === "rpc_starting"
                   ? "RPC"
+                  : props.query.event_name.includes("module")
+                    ? "CALL"
                   : props.query.event_name === "sp_statement_completed" ||
-                    props.query.event_name === "sql_statement_completed"
+                    props.query.event_name === "sql_statement_completed" ||
+                    props.query.event_name === "sp_statement_starting" ||
+                    props.query.event_name === "sql_statement_starting"
                     ? "STMT"
                     : props.query.event_name.includes("prepared") ||
                       props.query.event_name.includes("prepare")
@@ -358,7 +391,7 @@ export default function QueryDetail(props: Props) {
       </div>
 
       {/* SQL Text & Results */}
-      <div ref={contentRef} class="flex-1 overflow-auto p-4 flex flex-col gap-6">
+      <div ref={contentRef} class="flex-1 min-w-0 overflow-y-auto overflow-x-hidden p-4 flex flex-col items-stretch gap-6">
         <SqlBlock
           text={props.query.current_statement || props.query.sql_text}
           label="Statement"

@@ -3,7 +3,8 @@ mod profiler;
 mod settings;
 
 use db::ConnectionConfig;
-use profiler::{spawn_profiler_task, ProfilerCommand, QueryResultData};
+use profiler::{spawn_profiler_task, CaptureOptions, ProfilerCommand, QueryResultData};
+use std::backtrace::Backtrace;
 use tauri::Manager;
 use tokio::sync::{mpsc, oneshot};
 
@@ -59,11 +60,17 @@ async fn disconnect_from_server(state: tauri::State<'_, AppState>) -> Result<(),
 }
 
 #[tauri::command]
-async fn start_capture(state: tauri::State<'_, AppState>) -> Result<(), String> {
+async fn start_capture(
+    state: tauri::State<'_, AppState>,
+    options: Option<CaptureOptions>,
+) -> Result<(), String> {
     let (reply_tx, reply_rx) = oneshot::channel();
     state
         .tx
-        .send(ProfilerCommand::StartCapture { reply: reply_tx })
+        .send(ProfilerCommand::StartCapture {
+            options: options.unwrap_or_default(),
+            reply: reply_tx,
+        })
         .await
         .map_err(|e| format!("Internal error: {e}"))?;
 
@@ -104,14 +111,33 @@ async fn execute_query(
 async fn load_connection(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
     let (conn, password) = settings::load(&app)?;
     let mut val = serde_json::to_value(&conn).map_err(|e| format!("Serialization error: {e}"))?;
-    val.as_object_mut()
-        .unwrap()
-        .insert("password".into(), password.into());
+    let Some(obj) = val.as_object_mut() else {
+        return Err("Serialized connection settings were not an object".into());
+    };
+    obj.insert("password".into(), password.into());
     Ok(val)
 }
 
 pub fn run() {
-    tauri::Builder::default()
+    std::panic::set_hook(Box::new(|panic_info| {
+        let location = panic_info
+            .location()
+            .map(|location| format!("{}:{}", location.file(), location.line()))
+            .unwrap_or_else(|| "unknown location".to_string());
+
+        let payload = if let Some(message) = panic_info.payload().downcast_ref::<&str>() {
+            (*message).to_string()
+        } else if let Some(message) = panic_info.payload().downcast_ref::<String>() {
+            message.clone()
+        } else {
+            "non-string panic payload".to_string()
+        };
+
+        eprintln!("panic at {location}: {payload}");
+        eprintln!("{}", Backtrace::force_capture());
+    }));
+
+    let app = tauri::Builder::default()
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -128,6 +154,9 @@ pub fn run() {
             execute_query,
             load_connection,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .run(tauri::generate_context!());
+
+    if let Err(error) = app {
+        eprintln!("error while running tauri application: {error}");
+    }
 }

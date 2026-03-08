@@ -115,6 +115,14 @@ input[type="checkbox"].custom-checkbox:checked::after {
   @apply border-slate-600;
 }
 
+.dropdown-trigger:disabled {
+  @apply opacity-40 cursor-not-allowed;
+}
+
+.dropdown-trigger:disabled:hover {
+  @apply border-slate-700;
+}
+
 .dropdown-trigger:focus {
   @apply outline-none border-blue-500 ring-1 ring-blue-500;
 }
@@ -181,6 +189,29 @@ input[type="checkbox"].custom-checkbox:checked::after {
 
 .query-detail-header-scroll::-webkit-scrollbar-thumb:hover {
   background: rgb(100 116 139 / 0.75);
+}
+
+.results-scroll {
+  scrollbar-width: auto;
+  scrollbar-color: rgb(71 85 105 / 0.85) rgb(15 23 42 / 0.95);
+}
+
+.results-scroll::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.results-scroll::-webkit-scrollbar-track {
+  background: rgb(15 23 42 / 0.95);
+}
+
+.results-scroll::-webkit-scrollbar-thumb {
+  background: rgb(71 85 105 / 0.85);
+  border-radius: 999px;
+}
+
+.results-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgb(100 116 139 / 0.95);
 }
 
 /* --- Scrollbars --- */

@@ -3,6 +3,8 @@ import type { QueryEvent } from "../lib/types.ts";
 
 interface Props {
   queries: QueryEvent[];
+  totalQueryCount: number;
+  activeFilterSummary: string | null;
   selectedId: string | null;
   autoScroll: "on" | "off" | "smart";
   connected: boolean;
@@ -79,6 +81,7 @@ export default function QueryFeed(props: Props) {
   function formatEventType(eventName: string): string {
     if (eventName.includes("login") || eventName.includes("logout") || eventName.includes("connection")) return "AUDIT";
     if (eventName.includes("rpc")) return "RPC";
+    if (eventName.includes("module")) return "CALL";
     if (eventName.includes("batch")) return "BATCH";
     if (eventName.includes("statement")) return "STMT";
     if (eventName.includes("prepared") || eventName.includes("prepare")) return "PREP";
@@ -86,7 +89,8 @@ export default function QueryFeed(props: Props) {
   }
 
   function cleanSql(sql: string): string {
-    return sql.replace(/\s+/g, " ").trim();
+    const normalized = sql.replace(/\s+/g, " ").trim();
+    return normalized || "<no text>";
   }
 
   return (
@@ -94,10 +98,10 @@ export default function QueryFeed(props: Props) {
       ref={containerRef}
       tabIndex={0}
       onKeyDown={handleKeyDown}
-      class="flex-1 flex flex-col overflow-auto min-h-0 outline-none"
+      class="flex-1 flex flex-col min-h-0 min-w-0 overflow-auto outline-none"
     >
       {/* Header */}
-      <div class="sticky top-0 z-10 grid grid-cols-[50px_80px_70px_140px_1fr_80px_80px_80px] gap-px bg-slate-700 border-b border-slate-700 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+      <div class="sticky top-0 z-10 grid grid-cols-[64px_80px_70px_140px_1fr_80px_80px_80px] gap-px bg-slate-700 border-b border-slate-700 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
         <div class="px-2 py-1.5 bg-slate-800">Type</div>
         <div class="px-2 py-1.5 bg-slate-800">Time</div>
         <div class="px-2 py-1.5 bg-slate-800">Session</div>
@@ -112,11 +116,15 @@ export default function QueryFeed(props: Props) {
       {props.queries.length === 0 ? (
         <div class="flex-1 flex flex-col items-center justify-center text-slate-600">
           <div class="px-6 py-5 rounded-xl border border-slate-800/70 bg-slate-900/60 shadow-lg shadow-slate-900/40 flex flex-col items-center gap-3 max-w-sm text-center">
-            <i class="fa-solid fa-database text-4xl opacity-25" />
+            <i class={`fa-solid ${props.totalQueryCount > 0 ? "fa-filter-circle-xmark" : "fa-database"} text-4xl opacity-25`} />
             <div class="flex flex-col items-center gap-1">
-              <span class="text-sm text-slate-200">No queries captured yet.</span>
+              <span class="text-sm text-slate-200">
+                {props.totalQueryCount > 0 ? "No queries match the current filters." : "No queries captured yet."}
+              </span>
               <span class="text-[11px] opacity-70">
-                {!props.connected
+                {props.totalQueryCount > 0
+                  ? props.activeFilterSummary ?? "Clear the current filters or click Show all."
+                  : !props.connected
                   ? "Connect to a server to begin."
                   : !props.capturing
                     ? "Press Start to begin capturing events."
@@ -129,14 +137,23 @@ export default function QueryFeed(props: Props) {
         <For each={props.queries}>
           {(query) => (
             <div
-              class={`grid grid-cols-[50px_80px_70px_140px_1fr_80px_80px_80px] gap-px cursor-pointer border-b border-slate-800/50 text-xs transition-colors ${props.selectedId === query.id
+              class={`grid grid-cols-[64px_80px_70px_140px_1fr_80px_80px_80px] gap-px cursor-pointer border-b border-slate-800/50 text-xs transition-colors ${props.selectedId === query.id
                 ? "bg-blue-600/15 text-slate-100"
                 : "hover:bg-slate-800/50 text-slate-300"
                 }`}
               onClick={() => props.onSelect(props.selectedId === query.id ? null : query.id)}
             >
               <div class="px-2 py-1.5 text-slate-500">
-                {formatEventType(query.event_name)}
+                <div class="flex items-center gap-1">
+                  <span
+                    class={`inline-block h-1.5 w-1.5 rounded-full ${query.event_status === "starting"
+                      ? "bg-amber-400/90"
+                      : "bg-emerald-400/90"
+                      }`}
+                    title={query.event_status === "starting" ? "Starting event" : "Completed event"}
+                  />
+                  <span>{formatEventType(query.event_name)}</span>
+                </div>
               </div>
               <div class="px-2 py-1.5 tabular-nums text-slate-400">
                 {formatTime(query.start_time)}
